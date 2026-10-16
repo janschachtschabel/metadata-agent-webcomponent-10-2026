@@ -1,0 +1,1225 @@
+import { Injectable, NgZone } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
+import { 
+  CanvasState, 
+  CanvasFieldState, 
+  FieldGroup, 
+  FieldStatus,
+  createInitialState 
+} from '../shared/models/canvas.models';
+import { SchemaService } from './schema.service';
+import { ApiService, GenerateResponse } from './api.service';
+import { I18nService } from './i18n.service';
+import { LoggerService } from './logger.service';
+import { ShapeExpanderService } from './shape-expander.service';
+import { declaresObjects, objectKeyFor } from './object-shape';
+import { InstanceRegistry } from './instance-registry';
+
+/**
+ * Canvas Service - Simplified State Management
+ * Uses API for all AI operations, no local LLM calls
+ */
+@Injectable()
+export class CanvasService {
+  private stateSubject: BehaviorSubject<CanvasState>;
+
+  /**
+   * Proxy that emits the current stateSubject.
+   * switchMap in state$ automatically re-subscribes when stateSubject is swapped
+   * (e.g. when instance changes at runtime).
+   */
+  private stateProxy$: BehaviorSubject<BehaviorSubject<CanvasState>>;
+
+  /** Cache field values per content type so switching back restores them */
+  private fieldValueCache: Map<string, { values: Record<string, any>, origins: Record<string, boolean> }>;
+
+  private _instanceId = 'default';
+
+  /**
+   * Number of the newest extraction. Requests are not ordered: a reset, a second
+   * extraction or a content-type switch can start while one is still running.
+   * Each run remembers its number and drops what it receives once a newer run
+   * (or a reset) has taken over, so the previous page cannot land in the form.
+   */
+  private generation = 0;
+
+  constructor(
+    private schema: SchemaService,
+    private api: ApiService,
+    private i18n: I18nService,
+    private logger: LoggerService,
+    private shapeExpander: ShapeExpanderService,
+    private ngZone: NgZone
+  ) {
+    // Start with own state; bindToInstance() will swap to shared state
+    this.stateSubject = new BehaviorSubject<CanvasState>(createInitialState());
+    this.stateProxy$ = new BehaviorSubject(this.stateSubject);
+    this.fieldValueCache = new Map();
+    this.logger.info('CanvasService initialized (API mode)');
+  }
+
+  /**
+   * Bind this service instance to a shared instance scope.
+   * Two CanvasComponents with the same instanceId share one
+   * BehaviorSubject (state) and one fieldValueCache.
+   */
+  bindToInstance(instanceId: string): void {
+    this._instanceId = instanceId;
+    const shared = InstanceRegistry.getOrCreate(instanceId);
+    this.stateSubject = shared.stateSubject;
+    this.fieldValueCache = shared.fieldValueCache;
+    // Notify proxy so existing subscriptions (via state$) switch to the new subject
+    this.stateProxy$.next(this.stateSubject);
+    this.logger.info(`CanvasService bound to instance "${instanceId}"`);
+  }
+
+  get instanceId(): string {
+    return this._instanceId;
+  }
+
+  /**
+   * Observable of state — automatically follows the current stateSubject,
+   * even when bindToInstance() swaps it at runtime.
+   */
+  get state$(): Observable<CanvasState> {
+    return this.stateProxy$.pipe(switchMap(subj => subj.asObservable()));
+  }
+
+  getCurrentState(): CanvasState {
+    return this.stateSubject.value;
+  }
+
+  private updateState(partial: Partial<CanvasState>): void {
+    const current = this.getCurrentState();
+    this.stateSubject.next({ ...current, ...partial });
+  }
+
+  // ===== Screenshot Configuration =====
+
+  setScreenshotEnabled(enabled: boolean): void {
+    this.updateState({ screenshotEnabled: enabled });
+    this.logger.info(`📸 Screenshot ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /** Preview image handed in by the host page (`preview-image` attribute). */
+  setPreviewImage(url: string): void {
+    this.updateState({ previewImageUrl: url });
+  }
+
+  setScreenshotMethod(method: 'pageshot' | 'playwright'): void {
+    this.updateState({ screenshotMethod: method });
+    this.logger.info(`📸 Screenshot method: ${method}`);
+  }
+
+  // ===== API-based Extraction =====
+
+  async startExtraction(userText: string): Promise<void> {
+    this.logger.group('🚀 startExtraction (API)');
+    this.logger.info(`Input text length: ${userText.length} chars`);
+
+    // Collect existing metadata from current fields for re-extraction
+    const existingMetadata = this.collectCurrentMetadata();
+    const hasExistingData = Object.keys(existingMetadata).length > 0;
+    
+    if (hasExistingData) {
+      const fieldKeys = Object.keys(existingMetadata).filter(k => !k.startsWith('_'));
+      this.logger.debug('Re-extraction with existing metadata:', fieldKeys.length, 'field keys');
+    }
+
+    const run = ++this.generation;
+    this.updateState({
+      userText: userText,
+      isExtracting: true,
+      extractionProgress: 0,
+      extractionError: null,
+      extractionWarning: null
+    });
+
+    try {
+      // Initialize fields from schema (only if no existing fields)
+      if (!hasExistingData) {
+        await this.initializeCoreFields();
+      }
+      
+      // Get pre-selected content type (if any)
+      const state = this.getCurrentState();
+      const preSelectedSchemaFile = state.selectedContentType;
+      
+      // Call API for metadata generation
+      const response = await this.api.generate({
+        text: userText,
+        context: this.schema.getContextName(),
+        version: 'latest',
+        language: this.i18n.currentLang,
+        include_core: true,
+        enable_geocoding: true,
+        existing_metadata: hasExistingData ? existingMetadata : undefined,
+        schema_file: preSelectedSchemaFile || undefined
+      });
+
+      // Apply generated metadata to fields
+      if (run !== this.generation) return;
+      this.assertUsable(response);
+      await this.applyGeneratedMetadata(response);
+      this.reportGenerationWarning(response);
+      
+      this.logger.info(`Extraction completed: ${response.processing.fields_extracted}/${response.processing.fields_total} fields`);
+
+      // Text mode: if ccm:wwwurl found and screenshot enabled, capture screenshot asynchronously
+      const afterState = this.getCurrentState();
+      if (afterState.screenshotEnabled && !afterState.previewImageUrl) {
+        const wwwurl = response.metadata?.['ccm:wwwurl'];
+        const targetUrl = Array.isArray(wwwurl) ? wwwurl[0] : wwwurl;
+        if (targetUrl && typeof targetUrl === 'string' && targetUrl.startsWith('http')) {
+          this.logger.info(`📸 Text mode: URL found in metadata (ccm:wwwurl), capturing screenshot: ${targetUrl}`);
+          // Fire-and-forget: capture screenshot in background, don't block extraction
+          this.captureScreenshotAsync(targetUrl, afterState.screenshotMethod);
+        }
+      }
+    } catch (error: any) {
+      this.logger.error('Extraction failed:', error);
+      if (run !== this.generation) return;
+      this.updateState({ extractionError: this.describeFailure(error) });
+    } finally {
+      this.ngZone.run(() => {
+        if (run === this.generation) {
+          this.updateState({ isExtracting: false, extractionProgress: 100 });
+        }
+      });
+      this.logger.groupEnd();
+    }
+  }
+
+  // ===== URL-based Extraction =====
+
+  async startUrlExtraction(url: string): Promise<void> {
+    this.logger.group('🌐 startUrlExtraction (API)');
+    this.logger.info(`URL: ${url}`);
+
+    const existingMetadata = this.collectCurrentMetadata();
+    const hasExistingData = Object.keys(existingMetadata).length > 0;
+
+    const run = ++this.generation;
+    this.updateState({
+      isExtracting: true,
+      extractionProgress: 0,
+      extractionError: null,
+      extractionWarning: null
+    });
+
+    try {
+      if (!hasExistingData) {
+        await this.initializeCoreFields();
+      }
+      
+      const state = this.getCurrentState();
+      const preSelectedSchemaFile = state.selectedContentType;
+      
+      const generateRequest: any = {
+        input_source: 'url',
+        text: '',
+        source_url: url,
+        extraction_method: 'browser',
+        context: this.schema.getContextName(),
+        version: 'latest',
+        language: this.i18n.currentLang,
+        include_core: true,
+        enable_geocoding: true,
+        normalize: true,
+        existing_metadata: hasExistingData ? existingMetadata : undefined,
+        schema_file: preSelectedSchemaFile || undefined
+      };
+
+      // Include screenshot request if enabled (captured in parallel by API)
+      if (state.screenshotEnabled) {
+        generateRequest.screenshot_method = state.screenshotMethod;
+        generateRequest.preview_url = url;
+        this.logger.info(`📸 Screenshot requested: ${state.screenshotMethod}`);
+      }
+
+      const response = await this.api.generate(generateRequest);
+
+      if (run !== this.generation) return;
+      this.assertUsable(response);
+      await this.applyGeneratedMetadata(response);
+      this.reportGenerationWarning(response);
+      
+      this.logger.info(`URL extraction completed: ${response.processing.fields_extracted}/${response.processing.fields_total} fields`);
+    } catch (error: any) {
+      this.logger.error('URL extraction failed:', error);
+      if (run !== this.generation) return;
+      this.updateState({ extractionError: this.describeFailure(error) });
+    } finally {
+      this.ngZone.run(() => {
+        if (run === this.generation) {
+          this.updateState({ isExtracting: false, extractionProgress: 100 });
+        }
+      });
+      this.logger.groupEnd();
+    }
+  }
+
+  // ===== NodeId-based Extraction =====
+
+  async startNodeIdExtraction(nodeId: string): Promise<void> {
+    this.logger.group('📦 startNodeIdExtraction (API)');
+    this.logger.info(`NodeId: ${nodeId}`);
+
+    const existingMetadata = this.collectCurrentMetadata();
+    const hasExistingData = Object.keys(existingMetadata).length > 0;
+
+    const run = ++this.generation;
+    this.updateState({
+      isExtracting: true,
+      extractionProgress: 0,
+      extractionError: null,
+      extractionWarning: null
+    });
+
+    try {
+      if (!hasExistingData) {
+        await this.initializeCoreFields();
+      }
+      
+      const state = this.getCurrentState();
+      const preSelectedSchemaFile = state.selectedContentType;
+      
+      const response = await this.api.generate({
+        input_source: 'node_id',
+        text: '',
+        node_id: nodeId,
+        repository: 'staging',
+        context: this.schema.getContextName(),
+        version: 'latest',
+        language: this.i18n.currentLang,
+        include_core: true,
+        enable_geocoding: true,
+        normalize: true,
+        existing_metadata: hasExistingData ? existingMetadata : undefined,
+        schema_file: preSelectedSchemaFile || undefined
+      });
+
+      if (run !== this.generation) return;
+      this.assertUsable(response);
+      await this.applyGeneratedMetadata(response);
+      this.reportGenerationWarning(response);
+      
+      this.logger.info(`NodeId extraction completed: ${response.processing.fields_extracted}/${response.processing.fields_total} fields`);
+    } catch (error: any) {
+      this.logger.error('NodeId extraction failed:', error);
+      if (run !== this.generation) return;
+      this.updateState({ extractionError: this.describeFailure(error) });
+    } finally {
+      this.ngZone.run(() => {
+        if (run === this.generation) {
+          this.updateState({ isExtracting: false, extractionProgress: 100 });
+        }
+      });
+      this.logger.groupEnd();
+    }
+  }
+
+  // ===== Apply API Response to Fields =====
+
+  private async applyGeneratedMetadata(response: GenerateResponse): Promise<void> {
+    const state = this.getCurrentState();
+    const metadata = response.metadata || {};
+
+    this.logger.debug('API Response metadata:', metadata);
+
+    // Prepare content-type update (batched into a single updateState below)
+    let contentTypeUpdate: Partial<CanvasState> = {};
+    let preparedSpecialFields: CanvasFieldState[] | null = null;
+
+    if (response.metadataset && response.metadataset !== 'core.json') {
+      // Only reload schema if content type changed (skip on re-extraction with same schema
+      // to preserve existing field values that may not be in the API response)
+      const isNewSchema = state.selectedContentType !== response.metadataset;
+      if (isNewSchema) {
+        // Prepare fields WITHOUT triggering updateState — will be batched below
+        preparedSpecialFields = await this.prepareSpecialFields(response.metadataset);
+      }
+      
+      // Get label and icon for detected content type
+      const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === response.metadataset);
+      
+      contentTypeUpdate = {
+        detectedContentType: response.metadataset,
+        selectedContentType: response.metadataset,
+        contentTypeLabel: concept?.label || response.metadataset.replace('.json', ''),
+        contentTypeIcon: concept?.icon || 'category'
+      };
+    }
+
+    // Determine current fields (use newly prepared special fields if schema changed)
+    const currentCoreFields = state.coreFields || [];
+    const currentSpecialFields = preparedSpecialFields ?? (state.specialFields || []);
+
+    // Use _origins from API response to correctly track AI vs user fields
+    const origins = response._origins;
+
+    // Update all fields with values from API (with subfield expansion for complex objects)
+    const updatedCoreFields = currentCoreFields.map(field => {
+      const value = metadata[field.fieldId];
+      if (value !== undefined && value !== null) {
+        const isAi = origins ? origins[field.fieldId] !== 'user' : true;
+        return this.applyValueToField(field, value, isAi);
+      }
+      return field;
+    });
+
+    const updatedSpecialFields = currentSpecialFields.map(field => {
+      const value = metadata[field.fieldId];
+      if (value !== undefined && value !== null) {
+        const isAi = origins ? origins[field.fieldId] !== 'user' : true;
+        return this.applyValueToField(field, value, isAi);
+      }
+      return field;
+    });
+
+    const allFields = [...updatedCoreFields, ...updatedSpecialFields];
+    const visibleFields = this.getCountableFields(allFields);
+    const filledFields = visibleFields.filter(f => f.status === FieldStatus.FILLED).length;
+
+    // Strip internal meta-keys (e.g. _origins, _source_text) from metadata
+    // to prevent duplication when exporting later
+    const cleanMetadata: Record<string, any> = {};
+    for (const [key, value] of Object.entries(metadata)) {
+      if (!key.startsWith('_')) {
+        cleanMetadata[key] = value;
+      }
+    }
+
+    // Build single batched state update (content type + special fields + field values)
+    const stateUpdate: any = {
+      ...contentTypeUpdate,
+      coreFields: updatedCoreFields,
+      specialFields: updatedSpecialFields,
+      fieldGroups: this.groupFields(allFields),
+      metadata: cleanMetadata,
+      filledFields,
+      totalFields: visibleFields.length,
+      extractionProgress: 100
+    };
+
+    // Store source text from API response so it accumulates for re-extraction.
+    // On re-extraction the API returns the combined original+instruction text,
+    // which becomes the source context for the next correction cycle.
+    if (response._source_text) {
+      stateUpdate.userText = response._source_text;
+    }
+
+    // Set preview image URL if returned by API (async screenshot during generation)
+    if (response.preview_image_url) {
+      stateUpdate.previewImageUrl = response.preview_image_url;
+      this.logger.info('📸 Preview image received from API');
+    }
+
+    // Single updateState instead of 3 separate calls — avoids intermediate re-renders
+    this.updateState(stateUpdate);
+  }
+
+  // ===== Collect Current Metadata =====
+
+  private collectCurrentMetadata(): Record<string, any> {
+    const state = this.getCurrentState();
+    const metadata: Record<string, any> = {};
+
+    // Collect values from all fields
+    const allFields = [...state.coreFields, ...state.specialFields];
+    
+    for (const field of allFields) {
+      // For parent fields with subfields, reconstruct the complex object
+      if (field.isParent && field.subFields && field.subFields.length > 0) {
+        const reconstructed = this.shapeExpander.reconstructObjectFromSubFields(field, allFields);
+        if (reconstructed !== undefined && reconstructed !== null) {
+          metadata[field.fieldId] = reconstructed;
+        }
+        continue;
+      }
+      
+      // Skip subfields (they're handled via parent reconstruction)
+      if (field.parentFieldId) continue;
+      
+      if (field.value !== undefined && field.value !== null && field.value !== '') {
+        if (Array.isArray(field.value) && field.value.length === 0) {
+          continue;
+        }
+        metadata[field.fieldId] = field.value;
+      }
+    }
+
+    // Include _origins so the API can preserve user/ai tracking during re-extraction
+    const origins: Record<string, 'ai' | 'user'> = {};
+    for (const field of allFields) {
+      if (field.status === FieldStatus.FILLED) {
+        origins[field.fieldId] = field.isAiGenerated ? 'ai' : 'user';
+      }
+    }
+    if (Object.keys(origins).length > 0) {
+      metadata['_origins'] = origins;
+    }
+
+    // Include the original source text so the API can combine it with a new
+    // correction instruction during re-extraction (source text "fortschreiben")
+    const sourceText = state.userText;
+    if (sourceText) {
+      metadata['_source_text'] = sourceText;
+    }
+
+    return metadata;
+  }
+
+  // ===== Initialize Fields from Schema =====
+
+  private async initializeCoreFields(): Promise<void> {
+    const coreSchemaFields = await this.schema.getFields('core.json');
+    if (!coreSchemaFields) return;
+
+    const groups = await this.schema.getGroups('core.json');
+    const language = this.schema.getActiveLanguage();
+    const groupMap = new Map((groups || []).map((g: any) => [g.id, this.schema.localizeString(g.label, language)]));
+    const groupOrderMap = new Map(groups?.map((g: any, index: number) => [g.id, index]) || []);
+    const groupIconMap = new Map((groups || []).map((g: any) => [g.id, g.icon || '']));
+    
+    const coreFields: CanvasFieldState[] = coreSchemaFields
+      .filter((field: any) => field.system?.ask_user !== false)
+      .map((field: any) => this.createFieldState(field, 'Core', groupMap, groupOrderMap, groupIconMap, language));
+
+    const fieldGroups = this.groupFields(coreFields);
+    const visibleFields = this.getCountableFields(coreFields);
+
+    this.updateState({
+      coreFields: coreFields,
+      fieldGroups: fieldGroups,
+      totalFields: visibleFields.length,
+      metadata: {}
+    });
+  }
+
+  /**
+   * Prepare special fields from a content-type schema WITHOUT triggering a state update.
+   * Returns the prepared field array, or null if schema couldn't be loaded.
+   */
+  private async prepareSpecialFields(schemaFile: string): Promise<CanvasFieldState[] | null> {
+    let specialSchemaFields: any[] | null;
+    try {
+      specialSchemaFields = await this.schema.getFields(schemaFile);
+    } catch (error) {
+      // Reported here so the error shows on every path (type switch, JSON
+      // import, a generated result) and the core values of a generation stay.
+      // An empty list, not null: null means "keep the current special fields",
+      // and those belong to the previous type — exported under the new one,
+      // they would be written to the repository as fields of the wrong type.
+      this.logger.error(`Content-type schema ${schemaFile} could not be loaded:`, error);
+      const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === schemaFile);
+      this.updateState({
+        extractionError: this.i18n.instant('EXTRACTION_RESULT.SCHEMA_UNAVAILABLE', {
+          type: concept?.label || schemaFile,
+        }),
+      });
+      return [];
+    }
+    if (!specialSchemaFields) return null;
+
+    const groups = await this.schema.getGroups(schemaFile);
+    const language = this.schema.getActiveLanguage();
+    const groupMap = new Map((groups || []).map((g: any) => [g.id, this.schema.localizeString(g.label, language)]));
+    const groupOrderMap = new Map(groups?.map((g: any, index: number) => [g.id, index]) || []);
+    const groupIconMap = new Map((groups || []).map((g: any) => [g.id, g.icon || '']));
+    
+    const schemaName = schemaFile.replace('.json', '')
+      .split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    
+    return specialSchemaFields
+      .filter((field: any) => field.system?.ask_user !== false)
+      .map((field: any) => this.createFieldState(field, schemaName, groupMap, groupOrderMap, groupIconMap, language));
+  }
+
+  private async loadSpecialSchema(schemaFile: string): Promise<void> {
+    const specialFields = await this.prepareSpecialFields(schemaFile);
+    if (!specialFields) return;
+
+    const state = this.getCurrentState();
+    const allFields = [...state.coreFields, ...specialFields];
+    const fieldGroups = this.groupFields(allFields);
+    const visibleFields = this.getCountableFields(allFields);
+
+    this.updateState({
+      specialFields: specialFields,
+      fieldGroups: fieldGroups,
+      totalFields: visibleFields.length
+    });
+  }
+
+  private createFieldState(
+    field: any, 
+    schemaName: string, 
+    groupMap: Map<string, string>, 
+    groupOrderMap: Map<string, number>,
+    groupIconMap: Map<string, string>,
+    language: string
+  ): CanvasFieldState {
+    const groupId = field.group || 'other';
+    const groupLabel = this.schema.localizeString(field.group_label, language) 
+      || groupMap.get(groupId) 
+      || this.schema.getFallbackGroupLabel(language);
+    const groupOrder = groupOrderMap.get(groupId) ?? 999;
+    const groupIcon = groupIconMap.get(groupId) || '';
+    const localizedField = this.schema.localizeFieldFull(field, language);
+
+    return {
+      fieldId: field.id,
+      uri: field.system?.uri || field.id,
+      group: groupId,
+      groupLabel: String(groupLabel),
+      groupIcon: groupIcon,
+      groupOrder: groupOrder,
+      schemaName: schemaName,
+      aiFillable: field.system?.ai_fillable !== false,
+      repoField: field.system?.repo_field !== false,
+      label: localizedField.label,
+      description: localizedField.description,
+      value: field.system?.multiple ? [] : null,
+      status: FieldStatus.EMPTY,
+      confidence: 0,
+      isRequired: field.system?.required || false,
+      datatype: field.system?.datatype || 'string',
+      itemDatatype: field.system?.items?.datatype,
+      objectKey: objectKeyFor(field.system),
+      multiple: field.system?.multiple || false,
+      vocabulary: localizedField.vocabulary,
+      validation: field.system?.validation,
+      shape: field.system?.items?.shape,
+      examples: localizedField.examples,
+      prompt: localizedField.prompt
+    };
+  }
+
+  // ===== Manual Field Updates =====
+
+  updateFieldValue(fieldId: string, value: any): void {
+    const state = this.getCurrentState();
+    
+    const updateField = (f: CanvasFieldState): CanvasFieldState => {
+      // Direct match on top-level field
+      if (f.fieldId === fieldId) {
+        const isFilled = this.isValueFilled(value);
+        return {
+          ...f,
+          value: value,
+          status: isFilled ? FieldStatus.FILLED : FieldStatus.EMPTY,
+          isAiGenerated: false
+        };
+      }
+      // Check subfields of parent fields
+      if (f.isParent && f.subFields) {
+        const updatedSubs = f.subFields.map(sf => {
+          if (sf.fieldId === fieldId) {
+            return {
+              ...sf,
+              value: value,
+              status: this.isValueFilled(value) ? FieldStatus.FILLED : FieldStatus.EMPTY,
+              isAiGenerated: false
+            };
+          }
+          return sf;
+        });
+        const subChanged = updatedSubs.some((sf, i) => sf !== f.subFields![i]);
+        if (subChanged) {
+          const updatedParent = { ...f, subFields: updatedSubs };
+          // Reconstruct the parent object value from subfields
+          updatedParent.value = this.shapeExpander.reconstructObjectFromSubFields(
+            updatedParent, []
+          );
+          return updatedParent;
+        }
+      }
+      return f;
+    };
+    
+    const updatedCoreFields = state.coreFields.map(updateField);
+    const updatedSpecialFields = state.specialFields.map(updateField);
+    const allFields = [...updatedCoreFields, ...updatedSpecialFields];
+    const visibleFields = this.getCountableFields(allFields);
+    const filledFields = visibleFields.filter(f => f.status === FieldStatus.FILLED).length;
+    
+    // For subfield updates, also update the parent's metadata entry
+    const metadata = { ...state.metadata };
+    for (const f of allFields) {
+      if (f.isParent && f.subFields?.some(sf => sf.fieldId === fieldId)) {
+        metadata[f.fieldId] = f.value;
+      }
+    }
+    metadata[fieldId] = value;
+
+    this.updateState({
+      coreFields: updatedCoreFields,
+      specialFields: updatedSpecialFields,
+      fieldGroups: this.groupFields(allFields),
+      metadata,
+      filledFields,
+      totalFields: visibleFields.length
+    });
+  }
+
+  // ===== Content Type Selection =====
+
+  async selectContentType(schemaFileOrUri: string): Promise<void> {
+    // Resolve URI to schema filename if needed
+    const schemaFile = this.schema.resolveSchemaFileOrUri(schemaFileOrUri);
+    
+    const state = this.getCurrentState();
+    
+    // Save current field values to cache before switching
+    const currentCt = state.selectedContentType;
+    if (currentCt) {
+      this.cacheFieldValues(currentCt, state);
+    }
+    
+    // Load schema and update UI
+    await this.loadSpecialSchema(schemaFile);
+    
+    // Restore cached values for the new content type (if any)
+    this.restoreCachedFieldValues(schemaFile);
+    
+    const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === schemaFile);
+    
+    this.updateState({
+      selectedContentType: schemaFile,
+      detectedContentType: schemaFile,
+      contentTypeLabel: concept?.label || schemaFile.replace('.json', ''),
+      contentTypeIcon: concept?.icon || 'category'
+    });
+    
+    // If user text exists and no cached data for this type, regenerate
+    const hasExistingData = state.filledFields > 0;
+    if (hasExistingData && state.userText && !this.fieldValueCache.has(schemaFile)) {
+      this.logger.info(`Content type changed to ${schemaFile}, regenerating...`);
+      await this.regenerateWithContentType(schemaFile);
+    }
+  }
+
+  private cacheFieldValues(schemaFile: string, state: CanvasState): void {
+    const values: Record<string, any> = {};
+    const origins: Record<string, boolean> = {};
+    
+    // Cache special fields
+    for (const field of state.specialFields) {
+      if (field.status === FieldStatus.FILLED) {
+        values[field.fieldId] = field.value;
+        origins[field.fieldId] = field.isAiGenerated || false;
+      }
+      // Also cache subfield values
+      if (field.subFields) {
+        for (const sf of field.subFields) {
+          if (sf.status === FieldStatus.FILLED) {
+            values[sf.fieldId] = sf.value;
+            origins[sf.fieldId] = sf.isAiGenerated || false;
+          }
+        }
+      }
+    }
+    
+    if (Object.keys(values).length > 0) {
+      this.fieldValueCache.set(schemaFile, { values, origins });
+      this.logger.info(`Cached ${Object.keys(values).length} field values for ${schemaFile}`);
+    }
+  }
+
+  private restoreCachedFieldValues(schemaFile: string): void {
+    const cached = this.fieldValueCache.get(schemaFile);
+    if (!cached) return;
+    
+    const state = this.getCurrentState();
+    
+    const restoredSpecialFields = state.specialFields.map(field => {
+      const cachedValue = cached.values[field.fieldId];
+      if (cachedValue !== undefined) {
+        const isAi = cached.origins[field.fieldId] || false;
+        let updated = this.applyValueToField(field, cachedValue, isAi);
+        // Also restore subfield values
+        if (updated.subFields) {
+          updated = {
+            ...updated,
+            subFields: updated.subFields.map(sf => {
+              const sfValue = cached.values[sf.fieldId];
+              if (sfValue !== undefined) {
+                return this.applyValueToField(sf, sfValue, cached.origins[sf.fieldId] || false);
+              }
+              return sf;
+            })
+          };
+        }
+        return updated;
+      }
+      return field;
+    });
+    
+    const allFields = [...state.coreFields, ...restoredSpecialFields];
+    const visibleFields = this.getCountableFields(allFields);
+    const filledFields = visibleFields.filter(f => f.status === FieldStatus.FILLED).length;
+    
+    // Update metadata
+    const metadata = { ...state.metadata };
+    for (const [key, val] of Object.entries(cached.values)) {
+      metadata[key] = val;
+    }
+    
+    this.updateState({
+      specialFields: restoredSpecialFields,
+      fieldGroups: this.groupFields(allFields),
+      metadata,
+      filledFields,
+      totalFields: visibleFields.length
+    });
+    
+    this.logger.info(`Restored ${Object.keys(cached.values).length} cached field values for ${schemaFile}`);
+  }
+
+  private async regenerateWithContentType(schemaFile: string): Promise<void> {
+    const state = this.getCurrentState();
+    const userText = state.userText;
+    
+    if (!userText) return;
+    
+    const run = ++this.generation;
+    this.updateState({
+      isExtracting: true,
+      extractionProgress: 0,
+      extractionError: null,
+      extractionWarning: null
+    });
+
+    try {
+      // Fields of the new type first. The core values stay until replacements
+      // arrive: a failed call must not leave the user with an emptied form.
+      await this.loadSpecialSchema(schemaFile);
+
+      // Call API with explicit schema_file
+      const response = await this.api.generate({
+        text: userText,
+        context: this.schema.getContextName(),
+        version: 'latest',
+        language: this.i18n.currentLang,
+        include_core: true,
+        enable_geocoding: true,
+        schema_file: schemaFile
+      });
+
+      // Re-initialize fields (clear values) only once the new ones are there
+      if (run !== this.generation) return;
+      this.assertUsable(response);
+      await this.initializeCoreFields();
+      await this.loadSpecialSchema(schemaFile);
+      await this.applyGeneratedMetadata(response);
+      this.reportGenerationWarning(response);
+      this.logger.info(`Regeneration completed: ${response.processing.fields_extracted}/${response.processing.fields_total} fields`);
+    } catch (error: any) {
+      this.logger.error('Regeneration failed:', error);
+      if (run !== this.generation) return;
+      this.updateState({ extractionError: this.describeFailure(error) });
+    } finally {
+      this.ngZone.run(() => {
+        if (run === this.generation) {
+          this.updateState({ isExtracting: false, extractionProgress: 100 });
+        }
+      });
+    }
+  }
+
+  // ===== Load Existing Metadata =====
+
+  async loadMetadata(metadata: Record<string, any>, schemaFile?: string, origins?: Record<string, 'ai' | 'user'>, options?: { skipCore?: boolean }): Promise<void> {
+    this.logger.info('Loading existing metadata', origins ? '(with origins)' : '(no origins)');
+    
+    // Resolve URI to schema filename if needed
+    if (schemaFile) {
+      schemaFile = this.schema.resolveSchemaFileOrUri(schemaFile);
+    }
+    
+    // Initialize core fields unless explicitly skipped
+    if (!options?.skipCore) {
+      try {
+        await this.initializeCoreFields();
+      } catch (err) {
+        this.logger.warn('Core schema not available, continuing without core fields');
+      }
+    }
+    
+    if (schemaFile && schemaFile !== 'core.json') {
+      await this.loadSpecialSchema(schemaFile);
+      
+      // Set content type label and icon so UI (floating buttons) reflects the loaded type
+      const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === schemaFile);
+      this.updateState({
+        detectedContentType: schemaFile,
+        selectedContentType: schemaFile,
+        contentTypeLabel: concept?.label || schemaFile.replace('.json', ''),
+        contentTypeIcon: concept?.icon || 'category'
+      });
+    }
+
+    const state = this.getCurrentState();
+    
+    const updatedCoreFields = state.coreFields.map(field => {
+      const value = metadata[field.fieldId];
+      if (value !== undefined && value !== null) {
+        const isAi = origins ? origins[field.fieldId] !== 'user' : true;
+        return this.applyValueToField(field, value, isAi);
+      }
+      return field;
+    });
+
+    const updatedSpecialFields = state.specialFields.map(field => {
+      const value = metadata[field.fieldId];
+      if (value !== undefined && value !== null) {
+        const isAi = origins ? origins[field.fieldId] !== 'user' : true;
+        return this.applyValueToField(field, value, isAi);
+      }
+      return field;
+    });
+
+    const allFields = [...updatedCoreFields, ...updatedSpecialFields];
+    const visibleFields = this.getCountableFields(allFields);
+    const filledFields = visibleFields.filter(f => f.status === FieldStatus.FILLED).length;
+
+    // Strip internal meta-keys (_origins, _source_text) from metadata
+    // to prevent duplication when exporting later
+    const cleanMetadata: Record<string, any> = {};
+    for (const [key, value] of Object.entries(metadata)) {
+      if (!key.startsWith('_')) {
+        cleanMetadata[key] = value;
+      }
+    }
+
+    this.updateState({
+      coreFields: updatedCoreFields,
+      specialFields: updatedSpecialFields,
+      fieldGroups: this.groupFields(allFields),
+      metadata: cleanMetadata,
+      filledFields,
+      totalFields: visibleFields.length
+    });
+    
+    // Cache loaded values so switching content types and back preserves them
+    if (schemaFile && schemaFile !== 'core.json') {
+      const afterState = this.getCurrentState();
+      this.cacheFieldValues(schemaFile, afterState);
+    }
+  }
+
+  // ===== Export Metadata =====
+
+  getMetadata(): Record<string, any> {
+    return this.getCurrentState().metadata;
+  }
+
+  getMetadataForExport(): Record<string, any> {
+    const state = this.getCurrentState();
+    const allFields = [...state.coreFields, ...state.specialFields];
+    
+    // Reconstruct complex objects from subfields
+    // Also strip internal meta-keys (_origins, _source_text) to prevent duplication
+    const exportMetadata: Record<string, any> = {};
+    for (const [key, value] of Object.entries(state.metadata)) {
+      if (!key.startsWith('_')) {
+        exportMetadata[key] = value;
+      }
+    }
+    for (const field of allFields) {
+      if (field.isParent && field.subFields) {
+        exportMetadata[field.fieldId] = this.shapeExpander.reconstructObjectFromSubFields(field, allFields);
+      }
+    }
+    
+    // Build origins map: track which fields were set by AI vs user
+    const origins: Record<string, 'ai' | 'user'> = {};
+    for (const field of allFields) {
+      if (field.status === FieldStatus.FILLED) {
+        origins[field.fieldId] = field.isAiGenerated ? 'ai' : 'user';
+      }
+      // Also track subfield origins
+      if (field.isParent && field.subFields) {
+        for (const sf of field.subFields) {
+          if (sf.status === FieldStatus.FILLED) {
+            origins[sf.fieldId] = sf.isAiGenerated ? 'ai' : 'user';
+          }
+        }
+      }
+    }
+    
+    // Resolve metadataset_uri from selected content type
+    const metadataset = state.selectedContentType || 'core.json';
+    const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === metadataset);
+    
+    const result: Record<string, any> = {
+      contextName: this.schema.getContextName(),
+      schemaVersion: this.schema.getSchemaVersion(),
+      metadataset,
+      metadataset_uri: concept?.uri || null,
+      language: this.i18n.currentLang,
+      exportedAt: new Date().toISOString(),
+      metadata: exportMetadata,
+      _origins: origins
+    };
+
+    // Include raw source text for extended data upload
+    if (state.userText) {
+      result['_source_text'] = state.userText;
+    }
+
+    // Include preview image URL if available (screenshot base64 or URL)
+    if (state.previewImageUrl) {
+      result['preview_image_url'] = state.previewImageUrl;
+    }
+
+    return result;
+  }
+
+  getMetadataForRepository(): Record<string, any> {
+    return this.getMetadataForExport();
+  }
+
+  // ===== Async Screenshot Capture =====
+
+  /**
+   * Capture a screenshot in the background and update preview image when done.
+   * Fire-and-forget: does not block UI or extraction flow.
+   */
+  private captureScreenshotAsync(url: string, method: 'pageshot' | 'playwright'): void {
+    const run = this.generation;
+    this.api.captureScreenshot(url, method).then(dataUrl => {
+      // After a reset or a newer extraction this is the old page's picture.
+      if (dataUrl && run === this.generation) {
+        this.ngZone.run(() => {
+          this.updateState({ previewImageUrl: dataUrl });
+          this.logger.info('📸 Screenshot loaded into preview');
+        });
+      }
+    }).catch(err => {
+      this.logger.warn('📸 Async screenshot failed:', err);
+    });
+  }
+
+  // ===== Error Management =====
+
+  setError(message: string): void {
+    this.updateState({ extractionError: message });
+  }
+
+  clearError(): void {
+    this.updateState({ extractionError: null });
+  }
+
+  clearWarning(): void {
+    this.updateState({ extractionWarning: null });
+  }
+
+  /**
+   * The cause of a failed generation call, as the agent words it.
+   *
+   * The agent answers failures with `detail` (readable) and `error.message`
+   * (the same cause without the "…fehlgeschlagen:" prefix), so the prefix
+   * here does not repeat itself.
+   */
+  private describeFailure(error: any): string {
+    const body = error?.error;
+    const cause =
+      body?.error?.message ||
+      (typeof body?.detail === 'string' ? body.detail : '') ||
+      error?.message ||
+      'Unknown error';
+    const message = `${this.i18n.instant('EXTRACTION_RESULT.FAILED')}: ${cause}`;
+    // The agent logs the technical cause under this id - only for failures
+    // with an error code, so the X-Request-ID header is deliberately not used.
+    const requestId = body?.error?.request_id;
+    return requestId
+      ? `${message} (${this.i18n.instant('EXTRACTION_RESULT.REQUEST_ID', { id: requestId })})`
+      : message;
+  }
+
+  /**
+   * A 200 is no proof of a result: a proxy in between or an older agent can
+   * answer without one. Such an answer fails like an HTTP error instead of
+   * being applied over the form.
+   */
+  private assertUsable(response: GenerateResponse): void {
+    const processing = response?.processing;
+    if (!processing) {
+      throw new Error(this.i18n.instant('EXTRACTION_RESULT.INCOMPLETE_RESPONSE'));
+    }
+    if (processing.status === 'failed' || processing.success === false) {
+      throw new Error(
+        processing.error?.message ||
+          processing.errors?.[0] ||
+          this.i18n.instant('EXTRACTION_RESULT.INCOMPLETE_RESPONSE')
+      );
+    }
+  }
+
+  /**
+   * Say so when a result is usable but incomplete or uncertain: failed fields
+   * or a content type that only the keyword fallback picked. Never silent -
+   * a guessed type used to look exactly like a detected one.
+   */
+  private reportGenerationWarning(response: GenerateResponse): void {
+    const processing = response.processing;
+    const notes: string[] = [];
+    if (processing?.status === 'partial') {
+      notes.push(
+        this.i18n.instant('EXTRACTION_RESULT.PARTIAL', {
+          extracted: processing.fields_extracted,
+          total: processing.fields_total,
+          failed: processing.fields_failed ?? 0,
+        }) + (processing.error?.message ? ` ${processing.error.message}` : '')
+      );
+    }
+    if (processing?.content_type_detection?.method === 'keywords') {
+      const concept = this.schema
+        .getContentTypeConcepts()
+        .find(c => c.schema_file === response.metadataset);
+      notes.push(
+        this.i18n.instant('EXTRACTION_RESULT.CONTENT_TYPE_UNCERTAIN', {
+          type: concept?.label || response.metadataset,
+        })
+      );
+    }
+    this.updateState({ extractionWarning: notes.length ? notes.join(' ') : null });
+  }
+
+  // ===== Reset =====
+
+  reset(): void {
+    this.generation++; // whatever is still running answers into the void
+    this.stateSubject.next(createInitialState());
+    this.logger.info('Canvas state reset');
+  }
+
+  // ===== Content Type Change =====
+
+  async changeContentTypeManually(schemaFileOrUri: string, label?: string, icon?: string): Promise<void> {
+    await this.selectContentType(schemaFileOrUri);
+    if (label) {
+      this.updateState({ contentTypeLabel: label });
+    }
+    if (icon) {
+      this.updateState({ contentTypeIcon: icon });
+    }
+  }
+
+  // ===== JSON Import =====
+
+  async importJsonData(data: Record<string, any>): Promise<void> {
+    this.logger.info('Importing JSON data');
+    const metadata = data['metadata'] || data;
+    const schemaFile = data['metadataset'] || data['metadataset_uri'] || data['schemaFile'];
+    // Read _origins from top level (new format) or from inside metadata (old format)
+    const origins: Record<string, 'ai' | 'user'> | undefined =
+      data['_origins'] || metadata['_origins'];
+    await this.loadMetadata(metadata, schemaFile, origins);
+
+    // Restore source text if present (top level or inside metadata for backward compat)
+    const sourceText = data['_source_text'] || metadata['_source_text'];
+    if (sourceText) {
+      this.updateState({ userText: sourceText });
+    }
+
+    // Set preview image URL if present in imported data (screenshot base64 or URL)
+    const previewImageUrl = data['preview_image_url'] || metadata['preview_image_url'];
+    if (previewImageUrl) {
+      this.updateState({ previewImageUrl });
+      this.logger.info('📸 Preview image loaded from imported JSON');
+    }
+  }
+
+  // ===== Helper Methods =====
+
+  /**
+   * Apply a value to a field, expanding complex objects into subfields when shape is defined
+   */
+  private applyValueToField(field: CanvasFieldState, value: any, isAiGenerated = true): CanvasFieldState {
+    const schemaFieldDef = this.schema.getFieldById(field.fieldId);
+    // The SCHEMA decides whether this is an object field — never the value.
+    // Deciding from the value meant a string arrived, no subfields were built,
+    // `isParent` stayed false, and field.component.html rendered a plain text
+    // input (`*ngIf="!field.isParent"`). The editor then typed a name into a
+    // field the schema declares as an object, and it went straight through.
+    const isComplexObject = declaresObjects(schemaFieldDef?.system) || !!field.shape;
+
+    if (isComplexObject) {
+      const subFields = this.shapeExpander.expandFieldWithShape(field, value, schemaFieldDef);
+      // Inherit isAiGenerated on all subfields
+      const taggedSubFields = subFields.map(sf => ({ ...sf, isAiGenerated }));
+      return {
+        ...field,
+        value: value,
+        status: FieldStatus.FILLED,
+        confidence: 0.9,
+        isAiGenerated,
+        isParent: taggedSubFields.length > 0,
+        subFields: taggedSubFields.length > 0 ? taggedSubFields : undefined
+      };
+    }
+
+    return {
+      ...field,
+      value: value,
+      status: this.isValueFilled(value) ? FieldStatus.FILLED : FieldStatus.EMPTY,
+      confidence: 0.9,
+      isAiGenerated
+    };
+  }
+
+  /**
+   * Get countable fields: all top-level fields that represent user-visible metadata.
+   * Each parent with subfields counts as 1 field (not expanded).
+   * Excludes internal fields like ccm:oeh_extendedType (content type selector).
+   */
+  private getCountableFields(fields: CanvasFieldState[]): CanvasFieldState[] {
+    return fields.filter(f => f.fieldId !== 'ccm:oeh_extendedType');
+  }
+
+  private isValueFilled(value: any): boolean {
+    if (value === null || value === undefined) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return true;
+  }
+
+  private groupFields(fields: CanvasFieldState[]): FieldGroup[] {
+    const groupsMap = new Map<string, FieldGroup>();
+
+    for (const field of fields) {
+      const key = `${field.schemaName}-${field.group}`;
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, {
+          id: key,
+          label: field.groupLabel,
+          icon: field.groupIcon || '',
+          schemaName: field.schemaName,
+          fields: [],
+          isCore: field.schemaName === 'Core'
+        });
+      }
+      groupsMap.get(key)!.fields.push(field);
+    }
+
+    return Array.from(groupsMap.values())
+      .sort((a, b) => {
+        if (a.isCore && !b.isCore) return -1;
+        if (!a.isCore && b.isCore) return 1;
+        const orderA = a.fields[0]?.groupOrder ?? 999;
+        const orderB = b.fields[0]?.groupOrder ?? 999;
+        return orderA - orderB;
+      });
+  }
+
+  // ===== Content Type Concepts =====
+
+  getContentTypeConcepts(): any[] {
+    return this.schema.getContentTypeConcepts();
+  }
+}

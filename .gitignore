@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.angular/
+elements-check/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test
+coverage/
+# tsconfig.spec.json schreibt hierhin, sobald jemand die Spec-Konfiguration
+# mit Emit übersetzt.
+out-tsc/
+
+# npm-Cache. Der CI-Job ruft `npm ci --cache .npm` auf; wer denselben Befehl
+# lokal ausführt, hat das Verzeichnis im Arbeitsbaum.
+.npm/
+
+# Temp
+*.tmp
+*.temp

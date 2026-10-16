@@ -1,0 +1,246 @@
+// Material Design v3 Theme - Angular Material 21
+// The only theme. A prebuilt M2 theme next to it leaves M2-only tokens in place
+// that the M3 theme never sets — e.g. --mat-slide-toggle-handle-width (20px) —
+// so the slide-toggle handle was sized for M2 inside an M3 track.
+@use '@angular/material' as mat;
+
+// Everything the widget renders sits below one of these: the custom element,
+// the standalone app root (src/index.html) and the widget's own overlay
+// container under <body> (menus, selects, date and time pickers — see
+// WidgetOverlayContainer). Theme, font and icon rules stay inside them, so a
+// host page that runs Angular Material itself — edu-sharing does — keeps its
+// own --mat-* tokens, fonts and icons.
+$widget-roots: 'metadata-agent-canvas, app-root[data-metadata-agent-app], .metadata-agent-overlays';
+$font-family: '"Metadata Agent Roboto", Roboto, "Helvetica Neue", sans-serif';
+
+// What mat.core() used to provide. elevation-classes() emits its classes via
+// @at-root, i.e. globally — the same rules a Material host defines itself (the
+// timepicker's clock buttons use .mat-elevation-z0).
+@include mat.elevation-classes();
+
+// app-background() emits .mat-app-background via @at-root as well, plus
+// `html { --mat-sys-on-surface: initial }` — a build workaround that would
+// clear a host's M3 system token. Nested here, that rule becomes
+// "<widget root> html" and matches nothing.
+#{$widget-roots} {
+  @include mat.app-background();
+}
+
+// Self-hosted fonts — no Google Fonts request — under family names of their
+// own, so a host page's 'Roboto' or 'Material Icons' faces are neither replaced
+// nor mixed with these. The '^' keeps each URL as written, so it resolves
+// relative to styles.css (/widget/dist/fonts/...); scripts/build-elements.js
+// ships the files next to the bundles. Weights match the former Google
+// stylesheet (300/400/500).
+@font-face {
+  font-family: 'Metadata Agent Material Icons';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('^fonts/material-icons.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Metadata Agent Material Icons Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('^fonts/material-icons-outlined.woff2') format('woff2');
+}
+
+@each $weight in 300, 400, 500 {
+  @font-face {
+    font-family: 'Metadata Agent Roboto';
+    font-style: normal;
+    font-weight: $weight;
+    font-display: swap;
+    src: url('^fonts/roboto-latin-ext-#{$weight}-normal.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+
+  @font-face {
+    font-family: 'Metadata Agent Roboto';
+    font-style: normal;
+    font-weight: $weight;
+    font-display: swap;
+    src: url('^fonts/roboto-latin-#{$weight}-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+}
+
+// Icon ligature classes — the Google stylesheet used to provide these. The font
+// files alone are not enough: without them icon names render as plain text.
+// Scoped, so icons of the host page keep the host's icon font.
+#{$widget-roots} {
+  .material-icons,
+  .material-icons-outlined {
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'liga';
+  }
+
+  .material-icons {
+    font-family: 'Metadata Agent Material Icons';
+  }
+
+  // mat-icon with fontSet="material-icons-outlined" carries this class; the
+  // filled font must not win over it (kept !important from the former global
+  // override).
+  .material-icons-outlined {
+    font-family: 'Metadata Agent Material Icons Outlined' !important;
+  }
+}
+
+// Define M3 theme with blue primary color
+$theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$blue-palette,
+    tertiary: mat.$green-palette,
+  ),
+  typography: (
+    brand-family: $font-family,
+    plain-family: $font-family,
+  ),
+  density: (
+    scale: 0
+  )
+));
+
+// Apply the theme — to the widget, not to <html> (see $widget-roots).
+#{$widget-roots} {
+  // Layout styles name 'Inter' first and fall back to this.
+  --metadata-agent-font-family: #{$font-family};
+  font-family: var(--metadata-agent-font-family);
+  @include mat.all-component-themes($theme);
+}
+
+// Override primary color with corporate blue #003B7C
+html {
+  --mat-app-primary: #003B7C;
+  --mat-app-on-primary: #ffffff;
+  --mat-app-primary-container: #d0e8ff;
+  --mat-app-on-primary-container: #001d36;
+}
+
+// Global styles — these reach a host page too. The font is set on the widget
+// roots above instead, so a host page's text keeps its own.
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+// Material Design v3 inspired tokens
+:root {
+  // Primary colors
+  --md-primary: #0062ac;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #d3e4ff;
+  --md-on-primary-container: #001c39;
+  
+  // Secondary colors
+  --md-secondary: #006693;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #cae6ff;
+  --md-on-secondary-container: #001e30;
+  
+  // Tertiary (success)
+  --md-tertiary: #00874d;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #a1f4c0;
+  --md-on-tertiary-container: #002114;
+  
+  // Error
+  --md-error: #ba1a1a;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffdad6;
+  --md-on-error-container: #410002;
+  
+  // Surface
+  --md-surface: #fafafa;
+  --md-on-surface: #1a1c1e;
+  --md-surface-variant: #dfe2eb;
+  --md-on-surface-variant: #43474e;
+  
+  // Outline
+  --md-outline: #73777f;
+  --md-outline-variant: #c3c6cf;
+  
+  // Shape
+  --md-shape-xs: 4px;
+  --md-shape-sm: 8px;
+  --md-shape-md: 12px;
+  --md-shape-lg: 16px;
+  --md-shape-xl: 28px;
+  --md-shape-full: 9999px;
+  
+  // Elevation
+  --md-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --md-elevation-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --md-elevation-3: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+// Scrollbar styling
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--md-surface-variant);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--md-outline);
+  border-radius: 4px;
+  
+  &:hover {
+    background: var(--md-on-surface-variant);
+  }
+}
+
+// Focus visible
+*:focus-visible {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+// ngx-mat-timepicker opens as a dialog with this panel class, in the widget's
+// overlay container. Its clock hand and centre are <mat-toolbar color="primary">;
+// M3 has no colour variants, so without the former M2 theme they took the
+// surface colour and vanished on the dial. (The overrides that stood here
+// targeted ngx-mat-timepicker-container, which neither timepicker 19 nor 21
+// renders — they never applied.)
+.metadata-agent-overlays .ngx-mat-timepicker-dialog {
+  .clock-face__clock-hand,
+  .clock-face__center {
+    --mat-toolbar-container-background-color: var(--md-primary);
+    --mat-toolbar-container-text-color: var(--md-on-primary);
+  }
+}
+
+// Utility classes
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

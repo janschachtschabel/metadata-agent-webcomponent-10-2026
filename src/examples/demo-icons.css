@@ -1,0 +1,21 @@
+/*
+ * Icons in the demo pages' own controls. The widget keeps its icon classes to
+ * itself (styles.css scopes them to <metadata-agent-canvas>), so a host page
+ * styles its own icons. These pages use the icon font the widget ships, by the
+ * family name styles.css registers for it.
+ */
+.material-icons {
+  font-family: 'Metadata Agent Material Icons';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'liga';
+}

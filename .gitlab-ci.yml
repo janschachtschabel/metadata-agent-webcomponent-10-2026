@@ -1,0 +1,59 @@
+# You can override the included template(s) by including variable overrides
+# SAST customization: https://docs.gitlab.com/ee/user/application_security/sast/#customizing-the-sast-settings
+# Secret Detection customization: https://docs.gitlab.com/user/application_security/secret_detection/pipeline/configure
+# Dependency Scanning customization: https://docs.gitlab.com/ee/user/application_security/dependency_scanning/#customizing-the-dependency-scanning-settings
+# Container Scanning customization: https://docs.gitlab.com/ee/user/application_security/container_scanning/#customizing-the-container-scanning-settings
+# Note that environment variables can be set in several places
+# See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
+stages:
+- test
+- secret-detection
+
+# The widget had no build and no test job at all — a change that did not compile
+# reached the backend's static/widget/dist by hand and was noticed there.
+#
+# `ng test` guards the rule that broke the staging index: an object-typed field
+# must be treated as an object because the SCHEMA says so, never because the
+# value happens to already be one. Deciding it from the value meant the canvas
+# rendered a plain text input for schema:contactPoint, an editor typed a name
+# into it, and that string fixed the Elasticsearch path to `text`.
+#
+# The build runs in the same job: specs that pass in a bundle that does not
+# compile are worth nothing, and this is also the artifact that gets deployed.
+widget build and tests:
+  stage: test
+  interruptible: true
+  image: node:22
+  cache:
+    key:
+      files:
+      - package-lock.json
+    paths:
+    - .npm
+  before_script:
+  # Karma needs a real browser. ChromeHeadlessCI in karma.conf.js adds the
+  # --no-sandbox flag a container requires.
+  - apt-get update -qq && apt-get install -y -qq chromium
+  - export CHROME_BIN=$(which chromium)
+  - npm ci --cache .npm --prefer-offline --no-audit --no-fund
+  script:
+  - npx ng test --watch=false --browsers=ChromeHeadlessCI
+  - npx ng build --configuration production
+  # The deploy step's guard, into a scratch target: no Google Fonts, Vercel or
+  # PageShot host in the bundles, every font the stylesheet loads is present.
+  - mkdir -p elements-check && node scripts/build-elements.js --target=elements-check
+  artifacts:
+    when: on_success
+    expire_in: 1 week
+    paths:
+    - dist/
+
+sast:
+  stage: test
+include:
+- template: Security/SAST.gitlab-ci.yml
+- template: Security/Secret-Detection.gitlab-ci.yml
+variables:
+  SECRET_DETECTION_ENABLED: 'true'
+secret_detection:
+  stage: secret-detection

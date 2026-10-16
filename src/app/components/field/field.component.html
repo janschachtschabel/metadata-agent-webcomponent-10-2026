@@ -1,0 +1,284 @@
+<!-- Only render actual input fields, skip parent containers -->
+<div class="canvas-field" [ngClass]="_statusClass" [class.readonly-mode]="readonly" *ngIf="!field.isParent">
+
+  <!-- Radio fields rendered outside mat-form-field (no MatFormFieldControl needed) -->
+  <ng-container *ngIf="_isRadioField">
+    <div class="radio-field-label">
+      <ng-container *ngIf="field.parentFieldId">{{ field.parentFieldLabel }} ({{ field.label }})</ng-container>
+      <ng-container *ngIf="!field.parentFieldId">{{ field.label }}</ng-container>
+      <span *ngIf="field.isRequired" class="required-marker">*</span>
+    </div>
+    <mat-radio-group
+      [value]="field.value"
+      (change)="onRadioChange($event.value)"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"
+      class="radio-group">
+      <mat-radio-button [value]="null">{{ 'FIELD.RADIO.NO_SELECTION' | translate }}</mat-radio-button>
+      <mat-radio-button *ngFor="let opt of _radioOptions" [value]="opt.value">
+        {{ opt.label }}
+      </mat-radio-button>
+    </mat-radio-group>
+  </ng-container>
+
+  <mat-form-field
+    *ngIf="!_isRadioField"
+    appearance="outline"
+    floatLabel="always"
+    subscriptSizing="dynamic"
+    class="md3-text-field"
+    [class.is-disabled]="field.status === FieldStatus.EXTRACTING">
+    
+    <!-- Label with required marker -->
+    <mat-label>
+      <ng-container *ngIf="field.parentFieldId">{{ field.parentFieldLabel }} ({{ field.label }})</ng-container>
+      <ng-container *ngIf="!field.parentFieldId">{{ field.label }}</ng-container>
+      <span *ngIf="field.isRequired" class="required-marker">*</span>
+    </mat-label>
+
+    <!-- Boolean field: mat-select -->
+    <mat-select
+      *ngIf="field.datatype === 'boolean'"
+      [(ngModel)]="inputValue"
+      (selectionChange)="onBooleanChange($event.value)"
+      [placeholder]="field.description || ''"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly">
+      <mat-option [value]="null">{{ 'FIELD.BOOLEAN.EMPTY' | translate }}</mat-option>
+      <mat-option [value]="'true'">{{ 'FIELD.BOOLEAN.TRUE' | translate }}</mat-option>
+      <mat-option [value]="'false'">{{ 'FIELD.BOOLEAN.FALSE' | translate }}</mat-option>
+    </mat-select>
+
+    <!-- Date field with calendar picker -->
+    <input
+      *ngIf="field.datatype === 'date'"
+      matInput
+      [matDatepicker]="datePicker"
+      [(ngModel)]="dateValue"
+      (dateChange)="onDateChange($event)"
+      [placeholder]="field.description || 'TT.MM.JJJJ'"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+    <mat-datepicker-toggle *ngIf="field.datatype === 'date'" matIconSuffix [for]="datePicker"></mat-datepicker-toggle>
+    <mat-datepicker #datePicker></mat-datepicker>
+
+    <!-- DateTime field: editable text input + date picker + time picker -->
+    <input
+      *ngIf="field.datatype === 'datetime'"
+      matInput
+      type="text"
+      [(ngModel)]="inputValue"
+      (blur)="onDateTimeBlur()"
+      [placeholder]="field.description || 'TT.MM.JJJJ HH:MM'"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+    <!-- Hidden input for date picker binding -->
+    <input *ngIf="field.datatype === 'datetime'" [matDatepicker]="dateTimePicker" (dateChange)="onDateTimePickerSelect($event)" style="display:none"/>
+    <mat-datepicker-toggle *ngIf="field.datatype === 'datetime'" matIconSuffix [for]="dateTimePicker"></mat-datepicker-toggle>
+    <mat-datepicker #dateTimePicker></mat-datepicker>
+    <!-- Hidden input for time picker binding -->
+    <input *ngIf="field.datatype === 'datetime'" [ngxMatTimepicker]="dateTimeTimePicker" [format]="24" [value]="dateTimeTimeValue" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
+    <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'datetime'" matIconSuffix [for]="dateTimeTimePicker">
+    </ngx-mat-timepicker-toggle>
+    <ngx-mat-timepicker #dateTimeTimePicker [format]="24" (timeChanged)="onDateTimeTimeChange($event)"></ngx-mat-timepicker>
+
+    <!-- Time field with clock-dial timepicker -->
+    <input
+      *ngIf="field.datatype === 'time'"
+      matInput
+      [ngxMatTimepicker]="timePicker"
+      [(ngModel)]="inputValue"
+      [format]="24"
+      [placeholder]="field.description || 'HH:MM'"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"
+      readonly/>
+    <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'time'" matIconSuffix [for]="timePicker">
+    </ngx-mat-timepicker-toggle>
+    <ngx-mat-timepicker #timePicker [format]="24" (timeChanged)="onTimeStringChange($event)"></ngx-mat-timepicker>
+
+    <!-- Number field -->
+    <input
+      *ngIf="field.datatype === 'number' || field.datatype === 'integer'"
+      matInput
+      type="number"
+      [(ngModel)]="inputValue"
+      (input)="onInput($event)"
+      (blur)="onBlur()"
+      [placeholder]="field.description || ''"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+
+    <!-- URL/URI field -->
+    <input
+      *ngIf="field.datatype === 'url' || field.datatype === 'uri'"
+      matInput
+      type="url"
+      [(ngModel)]="inputValue"
+      (input)="onInput($event)"
+      (blur)="onBlur()"
+      [placeholder]="field.description || 'https://...'"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+
+    <!-- Duration field (ISO 8601: P1D, PT3H, etc.) -->
+    <input
+      *ngIf="field.datatype === 'duration'"
+      matInput
+      type="text"
+      [(ngModel)]="inputValue"
+      (input)="onInput($event)"
+      (blur)="onBlur()"
+      [placeholder]="field.description || 'z.B. PT2H, P1D, 2 Stunden'"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+
+    <!-- JSON field -->
+    <textarea
+      *ngIf="field.datatype === 'json'"
+      matInput
+      rows="3"
+      cdkTextareaAutosize
+      cdkAutosizeMinRows="2"
+      cdkAutosizeMaxRows="10"
+      [(ngModel)]="inputValue"
+      (input)="onInput($event)"
+      (blur)="onBlur()"
+      [placeholder]="field.description || '{&quot;key&quot;: &quot;value&quot;}'"
+      class="json-input"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly">
+    </textarea>
+
+    <!-- Object field (structured data) -->
+    <textarea
+      *ngIf="field.datatype === 'object'"
+      matInput
+      rows="2"
+      cdkTextareaAutosize
+      cdkAutosizeMinRows="2"
+      cdkAutosizeMaxRows="8"
+      [(ngModel)]="inputValue"
+      (input)="onInput($event)"
+      (blur)="onBlur()"
+      [placeholder]="field.description || ''"
+      class="object-input"
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly">
+    </textarea>
+
+    <!-- === Tree Picker fields (vocab with >=5 concepts or hierarchical) === -->
+    <div class="inline-chips-input picker-trigger"
+         *ngIf="!_isSpecialDatatype && _useTreePicker"
+         (mousedown)="!readonly && !pickerOpen && openPicker(); $event.preventDefault()">
+      <mat-chip-set
+        *ngIf="(field.multiple || field.datatype === 'array') && field.value?.length"
+        class="chip-container"
+        aria-label="Selected values">
+        <mat-chip *ngFor="let chip of field.value" highlighted (removed)="!readonly && removeChip(chip)">
+          {{ getChipDisplayValue(chip) }}
+          <button *ngIf="!readonly" matChipRemove type="button" (mousedown)="$event.stopPropagation()">
+            <mat-icon fontSet="material-icons-outlined">cancel</mat-icon>
+          </button>
+        </mat-chip>
+      </mat-chip-set>
+      <!-- Single-value display for non-array fields -->
+      <input
+        matInput
+        [value]="field.value ? getChipDisplayValue(field.value) : ''"
+        [placeholder]="field.description || ''"
+        readonly
+        class="picker-display-input"
+        *ngIf="!(field.multiple || field.datatype === 'array')">
+      <!-- Input for array fields (collapses when chips are present) -->
+      <input
+        matInput
+        value=""
+        [placeholder]="field.value?.length ? '' : (field.description || placeholderVocabPicker)"
+        readonly
+        class="picker-display-input"
+        [class.collapsed]="field.value?.length"
+        *ngIf="(field.multiple || field.datatype === 'array')">
+    </div>
+
+    <!-- Dropdown arrow for tree picker fields -->
+    <mat-icon
+      *ngIf="_useTreePicker && !_isSpecialDatatype"
+      matIconSuffix
+      class="dropdown-arrow"
+      (mousedown)="!readonly && !pickerOpen && openPicker(); $event.preventDefault()">
+      arrow_drop_down
+    </mat-icon>
+
+    <!-- === Regular text/array fields: inline chips + textarea with autocomplete === -->
+    <div class="inline-chips-input" *ngIf="!_isSpecialDatatype && !_useTreePicker">
+      <mat-chip-set
+        *ngIf="(field.multiple || field.datatype === 'array') && field.value?.length"
+        class="chip-container"
+        aria-label="Selected values">
+        <mat-chip *ngFor="let chip of field.value" highlighted (removed)="!readonly && removeChip(chip)">
+          {{ getChipDisplayValue(chip) }}
+          <button *ngIf="!readonly" matChipRemove type="button">
+            <mat-icon fontSet="material-icons-outlined">cancel</mat-icon>
+          </button>
+        </mat-chip>
+      </mat-chip-set>
+      <textarea
+        matInput
+        rows="1"
+        cdkTextareaAutosize
+        cdkAutosizeMinRows="1"
+        [cdkAutosizeMaxRows]="readonly ? 50 : 5"
+        [(ngModel)]="inputValue"
+        (input)="onInput($event)"
+        (blur)="onBlur()"
+        (keypress)="onKeyPress($event)"
+        [disabled]="field.status === FieldStatus.EXTRACTING || readonly"
+        [matAutocomplete]="auto"
+        [placeholder]="field.description || ((field.multiple || field.datatype === 'array') ? placeholderArrayInput : '')"
+        #autoTrigger="matAutocompleteTrigger">
+      </textarea>
+    </div>
+
+    <!-- Dropdown arrow for non-tree-picker vocabulary fields -->
+    <mat-icon
+      *ngIf="_hasVocabulary && !_isSpecialDatatype && !_useTreePicker"
+      matIconSuffix
+      class="dropdown-arrow"
+      (click)="autocompleteTrigger?.openPanel()">
+      arrow_drop_down
+    </mat-icon>
+
+    <!-- Autocomplete panel (for non-tree-picker fields) -->
+    <mat-autocomplete #auto="matAutocomplete" (optionSelected)="selectOption($event.option.value)">
+      <mat-option *ngFor="let option of filteredOptions" [value]="option">
+        {{ option }}
+      </mat-option>
+    </mat-autocomplete>
+
+    <!-- Inline hints inside mat-form-field -->
+    <mat-hint *ngIf="field.status === FieldStatus.EXTRACTING && !validationWarning && !validationError" class="field-status extracting">
+      {{ 'FIELD.STATUS.EXTRACTING' | translate }}
+    </mat-hint>
+  </mat-form-field>
+
+  <!-- Vocabulary Tree Picker (opens as overlay below the field) -->
+  <div class="tree-picker-anchor" *ngIf="_useTreePicker">
+    <app-vocab-tree-picker
+      [concepts]="field.vocabulary?.concepts || []"
+      [hierarchical]="!!(field.vocabulary && (field.vocabulary)['hierarchical'])"
+      [multiple]="field.multiple || field.datatype === 'array'"
+      [selectedValues]="_selectedValues"
+      [open]="pickerOpen"
+      (selectionChange)="onTreeSelectionChange($event)"
+      (closed)="closePicker()">
+    </app-vocab-tree-picker>
+  </div>
+
+  <!-- Support text below field (outside mat-form-field for reliable rendering).
+       Errors and warnings live here too: <mat-error> only shows when the
+       control is in Material's error state, which these ngModel fields never
+       enter, and the layouts hide the subscript area altogether. -->
+  <div class="support-text error" role="alert" *ngIf="validationError">
+    {{ validationError }}
+  </div>
+  <div class="support-text warning" aria-live="polite" *ngIf="validationWarning && !validationError">
+    {{ validationWarning }}
+  </div>
+  <div class="support-text required" *ngIf="field.isRequired && field.status === FieldStatus.EMPTY && !validationError && !validationWarning">
+    {{ 'FIELD.REQUIRED_HINT' | translate }}
+  </div>
+  <div class="support-text vocab" *ngIf="field.vocabulary?.type === 'closed' && !field.isRequired && field.status === FieldStatus.EMPTY && !validationError && !validationWarning">
+    {{ 'FIELD.VOCABULARY_CONTROLLED' | translate }}
+  </div>
+</div>
