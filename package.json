@@ -1,6 +1,6 @@
 {
   "name": "metadata-agent-canvas",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Optimized Angular Web Component for AI-powered Metadata Extraction",
   "scripts": {
     "start": "ng serve",

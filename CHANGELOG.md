@@ -1,5 +1,11 @@
 # Änderungen
 
+## 2.1.1 — 2026-10-17 — Versionsstand zum Agenten 2.1.1
+
+Gehört zum Agenten 2.1.1. Am Verhalten ändert sich nichts; das Bundle meldet
+2.1.1 und lädt seine Texte als `/widget/i18n/<sprache>.json?v=2.1.1`, damit
+Browser keine zwischengespeicherten Texte von 2.1.0 verwenden.
+
 ## 2.1.0 — 2026-10-14 — Fehler und Teilergebnisse sichtbar
 
 Gehört zum Agenten 2.1.0. Der meldet Fehlschläge als HTTP-Fehler mit
