@@ -64,7 +64,15 @@ export class InputAreaComponent {
   @Output() reloadFromPage = new EventEmitter<void>();
   @Output() screenshotToggle = new EventEmitter<boolean>();
 
-  onEnterKey(event: Event): void {
-    event.preventDefault();
+  /**
+   * Enter adds a line, as in any text box; it used to be swallowed without any
+   * effect (U-16). Ctrl+Enter (Cmd+Enter) starts the extraction.
+   */
+  onTextKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)
+        && this.userText.trim() && !this.isExtracting) {
+      event.preventDefault();
+      this.startExtraction.emit();
+    }
   }
 }

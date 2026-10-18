@@ -1,5 +1,5 @@
 import { BehaviorSubject } from 'rxjs';
-import { CanvasState, createInitialState } from '../shared/models/canvas.models';
+import { CanvasFieldState, CanvasState, createInitialState } from '../shared/models/canvas.models';
 
 /**
  * Shared state container for a single instance.
@@ -13,6 +13,39 @@ export interface SharedInstanceState {
   components: Set<string>;
   /** The component that emits DOM events (metadataChange, etc.) */
   primaryId: string | null;
+  /**
+   * Number of the newest run on this state (see CanvasService). Shared like
+   * the state: a reset or an import in one element supersedes a run that
+   * another element of the same instance started.
+   */
+  generation: number;
+  /** Fields the editor changed during the current run, as edited, by top-level field id (L-01). */
+  editsDuringRun: Map<string, CanvasFieldState>;
+  /** What the current run extracts from; a type choice re-runs it for the new type. */
+  runInput: RunInput | null;
+  /**
+   * Runs a type choice cut short, by run number, with the run it put in their
+   * place (null if none was started). The caller of the replaced run learns
+   * from it whether its source made it into the form after all.
+   */
+  takeovers: Map<number, Promise<RunOutcome | null>>;
+  /**
+   * The type choice that cut a run short and is still loading its schema
+   * (its run number). A choice made meanwhile takes the interruption over.
+   */
+  pendingTakeover: number | null;
+}
+
+/** How a run ended: `succeeded` once its result is in the form. */
+export interface RunOutcome {
+  run: number;
+  succeeded: boolean;
+}
+
+/** The source of an extraction: typed text, a URL or an edu-sharing node. */
+export interface RunInput {
+  mode: 'text' | 'url' | 'node';
+  value: string;
 }
 
 /**
@@ -33,6 +66,11 @@ export class InstanceRegistry {
         fieldValueCache: new Map(),
         components: new Set(),
         primaryId: null,
+        generation: 0,
+        editsDuringRun: new Map(),
+        runInput: null,
+        takeovers: new Map(),
+        pendingTakeover: null,
       });
     }
     return this.instances.get(instanceId)!;
@@ -52,6 +90,11 @@ export class InstanceRegistry {
     return inst.primaryId === componentId;
   }
 
+  /** Whether the component currently emits its instance's events. */
+  static isPrimary(instanceId: string, componentId: string): boolean {
+    return this.instances.get(instanceId)?.primaryId === componentId;
+  }
+
   /**
    * Unregister a component.  If it was primary, the next registered
    * component is automatically promoted.
@@ -69,16 +112,5 @@ export class InstanceRegistry {
     if (inst.components.size === 0) {
       this.instances.delete(instanceId);
     }
-  }
-
-  /** Check whether a component is the primary emitter for its instance. */
-  static isPrimary(instanceId: string, componentId: string): boolean {
-    const inst = this.instances.get(instanceId);
-    if (!inst) return true; // no instance yet → treat as primary
-    if (!inst.primaryId) {
-      inst.primaryId = componentId;
-      return true;
-    }
-    return inst.primaryId === componentId;
   }
 }

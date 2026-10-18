@@ -6,6 +6,7 @@ import {
   Injectable,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  ElementRef,
   OnInit,
   OnChanges,
   OnDestroy,
@@ -25,16 +26,18 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatAutocompleteModule, MatAutocompleteTrigger } from '@angular/material/autocomplete';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MAT_DATE_LOCALE, MAT_DATE_FORMATS, MatNativeDateModule, DateAdapter, NativeDateAdapter } from '@angular/material/core';
+import { MAT_DATE_LOCALE, MAT_DATE_FORMATS, MatNativeDateModule, DateAdapter, NativeDateAdapter, ErrorStateMatcher } from '@angular/material/core';
 import { MatRadioModule } from '@angular/material/radio';
 import { NgxMatTimepickerModule } from 'ngx-mat-timepicker';
 import { TextFieldModule } from '@angular/cdk/text-field';
 
 import { CanvasFieldState, FieldStatus } from '../../shared/models/canvas.models';
 import { FieldValidationService, VocabularyDef } from '../../core/field-validation.service';
+import { sameValue } from '../../core/canvas-fields';
 import { VocabTreePickerComponent } from '../shared/vocab-tree-picker/vocab-tree-picker.component';
+import { uniqueId } from '../../shared/unique-id';
 
-const DE_DATE_FORMATS = {
+const DATE_FORMATS = {
   parse: { dateInput: 'DD.MM.YYYY', timeInput: 'HH:MM' },
   display: {
     dateInput: { day: '2-digit', month: '2-digit', year: 'numeric' } as Intl.DateTimeFormatOptions,
@@ -46,21 +49,31 @@ const DE_DATE_FORMATS = {
   }
 };
 
+/** Day first in both languages: 03.05.2026 in German, 03/05/2026 in English (en-GB). */
+function dateSeparator(locale: unknown): string {
+  return String(locale).startsWith('en') ? '/' : '.';
+}
+
+/**
+ * Dates follow the widget language (audit U-14). FieldComponent sets the
+ * locale on every language switch; it used to be fixed to de-DE.
+ */
 @Injectable()
-class GermanDateAdapter extends NativeDateAdapter {
+class WidgetDateAdapter extends NativeDateAdapter {
   override format(date: Date, displayFormat: Object): string {
-    if (displayFormat === DE_DATE_FORMATS.display.dateInput) {
+    if (displayFormat === DATE_FORMATS.display.dateInput) {
       const day = String(date.getDate()).padStart(2, '0');
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const year = date.getFullYear();
-      return `${day}.${month}.${year}`;
+      const sep = dateSeparator(this.locale);
+      return `${day}${sep}${month}${sep}${year}`;
     }
     return super.format(date, displayFormat);
   }
 
   override parse(value: any): Date | null {
     if (typeof value === 'string') {
-      const parts = value.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      const parts = value.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
       if (parts) {
         return new Date(+parts[3], +parts[2] - 1, +parts[1]);
       }
@@ -97,8 +110,8 @@ class GermanDateAdapter extends NativeDateAdapter {
   ],
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: 'de-DE' },
-    { provide: DateAdapter, useClass: GermanDateAdapter },
-    { provide: MAT_DATE_FORMATS, useValue: DE_DATE_FORMATS }
+    { provide: DateAdapter, useClass: WidgetDateAdapter },
+    { provide: MAT_DATE_FORMATS, useValue: DATE_FORMATS }
   ],
   templateUrl: './field.component.html',
   styleUrls: ['./field.component.scss'],
@@ -112,6 +125,8 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   
   @Output() valueChange = new EventEmitter<unknown>();
   @ViewChild('autoTrigger') autocompleteTrigger?: MatAutocompleteTrigger;
+  /** The typed time input; the clock dial returns the focus there, not to its hidden anchor. */
+  @ViewChild('typedTime') typedTime?: ElementRef<HTMLInputElement>;
   
   FieldStatus = FieldStatus;
   
@@ -123,10 +138,24 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   
   // Tree picker state
   pickerOpen = false;
+  /** Id of this field's picker dialog (aria-controls); unique across widget instances. */
+  readonly pickerId = uniqueId('vocab-picker');
   
   // Validation state
   validationError: string | null = null;
   validationWarning: string | null = null;
+
+  /** Id of the text below the field (error, warning or hint), for aria-describedby. */
+  readonly supportId = uniqueId('field-support');
+
+  /**
+   * Material's error state follows this field's own validation (U-12): the
+   * input gets aria-invalid and the red outline whenever an error is shown.
+   * The ngModel controls never enter Material's error state on their own.
+   */
+  readonly errorMatcher: ErrorStateMatcher = { isErrorState: () => !!this.validationError };
+
+  private blurTimer: ReturnType<typeof setTimeout> | undefined;
 
   // Cached template properties (recomputed only in ngOnChanges, not every CD cycle)
   _isRadioField = false;
@@ -142,15 +171,21 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   // under OnPush ancestors, e.g. in browser extension web-component context)
   placeholderVocabPicker = '';
   placeholderArrayInput = '';
+  placeholderDate = '';
+  placeholderDateTime = '';
+  placeholderDuration = '';
   private i18nSubs: Subscription[] = [];
   
   constructor(
     private cdr: ChangeDetectorRef,
     private validation: FieldValidationService,
-    private translate: TranslateService
+    private translate: TranslateService,
+    private elRef: ElementRef<HTMLElement>,
+    private dateAdapter: DateAdapter<Date>
   ) {}
-  
+
   ngOnInit(): void {
+    this.dateAdapter.setLocale(this.dateLocale);
     this.updateInputValue();
     this.updateFilteredOptions();
     this.resolveTranslatedPlaceholders();
@@ -161,19 +196,51 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
         this.cdr.markForCheck();
       }),
       this.translate.onLangChange.subscribe(() => {
+        this.dateAdapter.setLocale(this.dateLocale);
+        this.updateInputValue();
         this.resolveTranslatedPlaceholders();
         this.cdr.markForCheck();
       })
     );
   }
-  
+
   ngOnDestroy(): void {
     this.i18nSubs.forEach(s => s.unsubscribe());
+    // The delayed blur check would emit for a field that is gone.
+    clearTimeout(this.blurTimer);
   }
-  
+
+  private get dateLocale(): string {
+    return this.translate.getCurrentLang() === 'en' ? 'en-GB' : 'de-DE';
+  }
+
   private resolveTranslatedPlaceholders(): void {
     this.placeholderVocabPicker = this.translate.instant('FIELD.VOCAB_OPEN_PICKER');
     this.placeholderArrayInput = this.translate.instant('FIELD.ARRAY_PLACEHOLDER');
+    this.placeholderDate = this.translate.instant('FIELD.DATE_PLACEHOLDER');
+    this.placeholderDateTime = this.translate.instant('FIELD.DATETIME_PLACEHOLDER');
+    this.placeholderDuration = this.translate.instant('FIELD.DURATION_PLACEHOLDER');
+  }
+
+  /**
+   * Id for aria-describedby while a support text (error, warning, required or
+   * vocabulary hint) is shown below the field (U-12). The conditions mirror
+   * the four support-text blocks in the template, of which one shows at most.
+   * '' rather than null when nothing is shown: MatInput's aria-describedby
+   * input is typed as string.
+   */
+  get describedBy(): string {
+    const f = this.field;
+    const shown = !!this.validationError
+      || !!this.validationWarning
+      || (f.isRequired && f.status === FieldStatus.EMPTY)
+      || (f.vocabulary?.type === 'closed' && !f.isRequired && f.status === FieldStatus.EMPTY);
+    return shown ? this.supportId : '';
+  }
+
+  /** The AI origin, also as icon and text: colour alone does not reach everyone (U-16). */
+  get showAiOrigin(): boolean {
+    return this.highlightAi && !!this.field.isAiGenerated && this.field.status === FieldStatus.FILLED;
   }
   
   ngOnChanges(changes: SimpleChanges): void {
@@ -205,8 +272,8 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
       const timeMatch = String(this.field.value).match(/(\d{2}):(\d{2})/);
       this.inputValue = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : String(this.field.value);
     } else if (this.field.datatype === 'datetime' && this.field.value) {
-      // Format datetime as German "DD.MM.YYYY HH:MM"
-      this.inputValue = this.formatDateTimeGerman(String(this.field.value));
+      // Format datetime in the widget language ("DD.MM.YYYY HH:MM" / "DD/MM/YYYY HH:MM")
+      this.inputValue = this.formatDateTime(String(this.field.value));
       // Extract time part for timepicker
       const timeMatch = String(this.field.value).match(/(\d{2}):(\d{2})/);
       this.dateTimeTimeValue = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : '00:00';
@@ -225,24 +292,25 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     }
   }
 
-  private formatDateTimeGerman(val: string): string {
+  private formatDateTime(val: string): string {
+    const sep = dateSeparator(this.dateLocale);
     // Parse ISO "YYYY-MM-DDTHH:MM" or "YYYY-MM-DD HH:MM" into "DD.MM.YYYY HH:MM"
     const match = val.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
     if (match) {
-      return `${match[3]}.${match[2]}.${match[1]} ${match[4]}:${match[5]}`;
+      return `${match[3]}${sep}${match[2]}${sep}${match[1]} ${match[4]}:${match[5]}`;
     }
     // Try date-only "YYYY-MM-DD"
     const dateMatch = val.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (dateMatch) {
-      return `${dateMatch[3]}.${dateMatch[2]}.${dateMatch[1]} 00:00`;
+      return `${dateMatch[3]}${sep}${dateMatch[2]}${sep}${dateMatch[1]} 00:00`;
     }
-    // Already in German format or unrecognized — return as-is
+    // Already in display format or unrecognized — return as-is
     return val;
   }
 
-  private parseDateTimeGerman(val: string): string | null {
-    // Parse German "DD.MM.YYYY HH:MM" into ISO "YYYY-MM-DDTHH:MM"
-    const match = val.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})/);
+  private parseDateTime(val: string): string | null {
+    // Parse "DD.MM.YYYY HH:MM" (or with "/") into ISO "YYYY-MM-DDTHH:MM"
+    const match = val.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})\s+(\d{1,2}):(\d{2})/);
     if (match) {
       const day = match[1].padStart(2, '0');
       const month = match[2].padStart(2, '0');
@@ -252,7 +320,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
       return `${year}-${month}-${day}T${hour}:${minute}`;
     }
     // Try date-only "DD.MM.YYYY"
-    const dateMatch = val.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    const dateMatch = val.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
     if (dateMatch) {
       const day = dateMatch[1].padStart(2, '0');
       const month = dateMatch[2].padStart(2, '0');
@@ -313,7 +381,8 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   
   onBlur(): void {
     // Delay to allow autocomplete click
-    setTimeout(() => {
+    clearTimeout(this.blurTimer);
+    this.blurTimer = setTimeout(() => {
       if (this.inputValue.trim()) {
         this.processInputValue();
       }
@@ -323,6 +392,11 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   onKeyPress(event: KeyboardEvent): void {
     if (event.key === 'Enter') {
       event.preventDefault();
+      // ngModel writes to the textarea only when its binding changed since the
+      // last change detection. Without a run since the typing (it is coalesced),
+      // the binding still holds '' and resetting inputValue to '' left the
+      // typed word in the textarea next to its new chip.
+      this.cdr.detectChanges();
       this.processInputValue();
     }
   }
@@ -375,9 +449,13 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
       this.inputValue = '';
       this.cdr.markForCheck();
     } else {
-      // Update input display with normalized/corrected value
+      // Update input display with normalized/corrected value. Leaving a field
+      // without a change emits nothing: during a run the canvas would take it
+      // for an edit and keep the field against the AI value (L-01).
       this.inputValue = this.getChipDisplayValue(normalizedValue);
-      this.valueChange.emit(normalizedValue);
+      if (!sameValue(normalizedValue, this.field.value)) {
+        this.valueChange.emit(normalizedValue);
+      }
       this.cdr.markForCheck();
     }
   }
@@ -440,6 +518,30 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     }
   }
 
+  /**
+   * A time typed into the time field (U-14). The field was read-only, so the
+   * clock dial was the only way in; it stays available from the toggle.
+   */
+  onTimeTyped(text: string): void {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      this.validationError = null;
+      this.valueChange.emit(null);
+      return;
+    }
+    const match = trimmed.match(/^(\d{1,2})[:.](\d{2})$/);
+    if (!match || +match[1] > 23 || +match[2] > 59) {
+      this.validationError = this.translate.instant('VALIDATION.INVALID_TIME');
+      this.cdr.markForCheck();
+      return;
+    }
+    const time = `${match[1].padStart(2, '0')}:${match[2]}`;
+    this.inputValue = time;
+    this.validationError = null;
+    this.valueChange.emit(time);
+    this.cdr.markForCheck();
+  }
+
   onTimeStringChange(timeStr: string): void {
     if (timeStr) {
       this.inputValue = timeStr;
@@ -449,14 +551,15 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   onDateTimeBlur(): void {
+    // Only a change is emitted (L-01, see processInputValue).
     if (!this.inputValue) {
-      this.valueChange.emit(null);
+      if (!sameValue(null, this.field.value)) this.valueChange.emit(null);
       return;
     }
-    const iso = this.parseDateTimeGerman(this.inputValue);
+    const iso = this.parseDateTime(this.inputValue);
     if (iso) {
-      this.inputValue = this.formatDateTimeGerman(iso);
-      this.valueChange.emit(iso);
+      this.inputValue = this.formatDateTime(iso);
+      if (!sameValue(iso, this.field.value)) this.valueChange.emit(iso);
       this.validationError = '';
     }
   }
@@ -470,7 +573,8 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     // Preserve existing time part, default 00:00
     const timeMatch = this.inputValue?.match(/(\d{1,2}):(\d{2})/);
     const time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : '00:00';
-    this.inputValue = `${day}.${month}.${year} ${time}`;
+    const sep = dateSeparator(this.dateLocale);
+    this.inputValue = `${day}${sep}${month}${sep}${year} ${time}`;
     this.dateTimeTimeValue = time;
     this.valueChange.emit(`${year}-${month}-${day}T${time}`);
     this.validationError = '';
@@ -479,7 +583,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   onDateTimeTimeChange(timeStr: string): void {
     if (!timeStr) return;
     // Parse current datetime to get the date part
-    const currentIso = this.parseDateTimeGerman(this.inputValue);
+    const currentIso = this.parseDateTime(this.inputValue);
     let datePart: string;
     if (currentIso) {
       datePart = currentIso.split('T')[0];
@@ -492,19 +596,12 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     const tMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
     const normalizedTime = tMatch ? `${tMatch[1].padStart(2, '0')}:${tMatch[2]}` : timeStr;
     const newIso = `${datePart}T${normalizedTime}`;
-    this.inputValue = this.formatDateTimeGerman(newIso);
+    this.inputValue = this.formatDateTime(newIso);
     this.dateTimeTimeValue = normalizedTime;
     this.valueChange.emit(newIso);
     this.validationError = '';
   }
 
-  onBooleanChange(value: string | null): void {
-    if (value === null || value === '') {
-      this.valueChange.emit(null);
-    } else {
-      this.valueChange.emit(value === 'true');
-    }
-  }
   
   // ===== Helpers =====
   
@@ -636,12 +733,24 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     return isHierarchical || hasManyOptions;
   }
 
+  /** Enter, Space or Arrow down open the picker, as on a native select. */
+  onPickerKeydown(event: KeyboardEvent): void {
+    if (this.readonly || this.pickerOpen) return;
+    if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.openPicker();
+    }
+  }
+
   openPicker(): void {
     this.pickerOpen = true;
   }
 
+  /** Close and put the focus back on the field, so keyboard users keep their place. */
   closePicker(): void {
     this.pickerOpen = false;
+    const trigger = this.elRef.nativeElement.querySelector<HTMLElement>('.picker-display-input');
+    setTimeout(() => trigger?.focus());
   }
 
   getSelectedValues(): string[] {
@@ -657,7 +766,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
       this.valueChange.emit(selected.length > 0 ? selected[0] : null);
       // For single-select, close the picker after selection
       if (selected.length > 0) {
-        this.pickerOpen = false;
+        this.closePicker();
       }
     }
     this.validationError = null;

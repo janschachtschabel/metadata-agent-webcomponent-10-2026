@@ -370,6 +370,9 @@ describe('CanvasService generation feedback', () => {
       generate.and.returnValue(pending.promise);
 
       const run = service.startExtraction('Seite A');
+      // Reset while the request is out (a reset before it is sent sends none).
+      for (let i = 0; i < 20 && !generate.calls.any(); i++) await Promise.resolve();
+      expect(generate).toHaveBeenCalled();
       service.reset();
       pending.reject(agentFailure('LLM_RATE_LIMITED', 'zu viele Anfragen'));
       await run;
@@ -377,6 +380,103 @@ describe('CanvasService generation feedback', () => {
       expect((service as any).applyGeneratedMetadata).not.toHaveBeenCalled();
       expect(service.getCurrentState().extractionError).toBeNull();
       expect(service.getCurrentState().isExtracting).toBe(false);
+    });
+  });
+
+  /**
+   * Characterization (M-02): what each entry point sends to /generate. Pinned
+   * before the four flows were merged into one, so the merge changes nothing.
+   */
+  describe('the request each flow sends', () => {
+    const common = {
+      context: 'default',
+      version: 'latest',
+      language: 'de',
+      include_core: true,
+      enable_geocoding: true,
+    };
+
+    beforeEach(() => generate.and.resolveTo(generated({})));
+
+    it('text', async () => {
+      await service.startExtraction('Ein Text');
+
+      expect(generate.calls.mostRecent().args[0]).toEqual({
+        ...common,
+        text: 'Ein Text',
+        existing_metadata: undefined,
+        schema_file: undefined,
+      });
+      expect(service.getCurrentState().userText).toBe('Ein Text');
+    });
+
+    it('URL with screenshot', async () => {
+      service.setScreenshotEnabled(true);
+      service.setScreenshotMethod('playwright');
+
+      await service.startUrlExtraction('https://example.org/a');
+
+      expect(generate.calls.mostRecent().args[0]).toEqual({
+        ...common,
+        input_source: 'url',
+        text: '',
+        source_url: 'https://example.org/a',
+        extraction_method: 'browser',
+        normalize: true,
+        existing_metadata: undefined,
+        schema_file: undefined,
+        screenshot_method: 'playwright',
+        preview_url: 'https://example.org/a',
+      });
+      expect(service.getCurrentState().userText).withContext('a URL run leaves the text alone').toBe('');
+    });
+
+    it('URL without screenshot', async () => {
+      service.setScreenshotEnabled(false);
+
+      await service.startUrlExtraction('https://example.org/a');
+
+      const request = generate.calls.mostRecent().args[0];
+      expect(request.screenshot_method).toBeUndefined();
+      expect(request.preview_url).toBeUndefined();
+    });
+
+    it('node ID', async () => {
+      await service.startNodeIdExtraction('node-1');
+
+      expect(generate.calls.mostRecent().args[0]).toEqual({
+        ...common,
+        input_source: 'node_id',
+        text: '',
+        node_id: 'node-1',
+        repository: 'staging',
+        normalize: true,
+        existing_metadata: undefined,
+        schema_file: undefined,
+      });
+    });
+
+    it('a re-extraction sends the form and the chosen type, and keeps the fields', async () => {
+      (service as any).updateState({
+        selectedContentType: 'event.json',
+        coreFields: [field('cclom:general_keyword', { value: ['Musik'], status: FieldStatus.FILLED, isAiGenerated: true })],
+      });
+
+      await service.startNodeIdExtraction('node-1');
+
+      const request = generate.calls.mostRecent().args[0];
+      expect(request.schema_file).toBe('event.json');
+      expect(request.existing_metadata['cclom:general_keyword']).toEqual(['Musik']);
+      expect((service as any).initializeCoreFields).not.toHaveBeenCalled();
+    });
+
+    it('a text run captures a screenshot of the URL the answer names', async () => {
+      const capture = spyOn(service as any, 'captureScreenshotAsync');
+      generate.and.resolveTo({ ...generated({}), metadata: { 'ccm:wwwurl': ['https://example.org/seite'] } });
+
+      expect(await service.startExtraction('Ein Text')).toBeTrue();
+
+      expect(capture).toHaveBeenCalledWith('https://example.org/seite', 'playwright');
     });
   });
 
@@ -485,5 +585,84 @@ describe('CanvasService.setPreviewImage', () => {
     service.setPreviewImage('https://example.org/vorschau.png');
 
     expect(service.getCurrentState().previewImageUrl).toBe('https://example.org/vorschau.png');
+  });
+});
+
+/**
+ * Audit U-04: labels were localized once, when the fields were built. After a
+ * switch to English the form kept its German labels, group names and
+ * vocabulary labels until the next extraction rebuilt it.
+ */
+describe('CanvasService after a language switch', () => {
+  let lang: 'de' | 'en';
+  let service: CanvasService;
+
+  const TITLE = {
+    id: 'cclom:title',
+    group: 'basics',
+    label: { de: 'Titel', en: 'Title' },
+    system: { path: 'cclom:title', datatype: 'string', multiple: false },
+  };
+  const LEVEL = {
+    id: 'ccm:educationalcontext',
+    group: 'basics',
+    label: { de: 'Bildungsstufe', en: 'Educational level' },
+    system: {
+      path: 'ccm:educationalcontext',
+      datatype: 'string',
+      multiple: false,
+      vocabulary: { type: 'closed', concepts: [{ uri: 'http://x/primar', label: { de: 'Primarstufe', en: 'Primary' } }] },
+    },
+  };
+  const GROUPS = [{ id: 'basics', label: { de: 'Grunddaten', en: 'Basics' } }];
+
+  beforeEach(() => {
+    lang = 'de';
+    const pick = (v: any, l?: string) => (typeof v === 'string' ? v : v?.[l || lang] || '');
+    const schema: any = {
+      getFields: (file: string) => Promise.resolve(file === 'core.json' ? [TITLE, LEVEL] : []),
+      getGroups: () => Promise.resolve(GROUPS),
+      getFieldById: (id: string) => [TITLE, LEVEL].find(f => f.id === id),
+      getActiveLanguage: () => lang,
+      localizeString: pick,
+      localizeFieldFull: (f: any, l: string) => ({
+        label: pick(f.label, l),
+        description: '',
+        examples: [],
+        prompt: '',
+        vocabulary: f.system.vocabulary
+          ? { ...f.system.vocabulary, concepts: f.system.vocabulary.concepts.map((c: any) => ({ ...c, label: pick(c.label, l) })) }
+          : undefined,
+      }),
+      getFallbackGroupLabel: () => (lang === 'en' ? 'Other' : 'Sonstige'),
+      getContentTypeConcepts: () => [],
+      resolveSchemaFileOrUri: (v: string) => v,
+    };
+    service = new CanvasService(
+      schema,
+      {} as any,
+      {} as any,
+      { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} } as any,
+      new ShapeExpanderService(schema),
+      { run: (fn: () => unknown) => fn() } as any,
+    );
+  });
+
+  it('relabels fields, groups and vocabularies and keeps the values', async () => {
+    await service.loadMetadata({ 'cclom:title': 'Bruchrechnung' });
+    service.getCurrentState().fieldGroups[0].collapsed = true;
+
+    lang = 'en';
+    await service.relocalizeFields();
+
+    const state = service.getCurrentState();
+    const title = state.coreFields.find(f => f.fieldId === 'cclom:title')!;
+    const level = state.coreFields.find(f => f.fieldId === 'ccm:educationalcontext')!;
+    expect(title.label).toBe('Title');
+    expect(title.groupLabel).toBe('Basics');
+    expect(title.value).withContext('values are not touched').toBe('Bruchrechnung');
+    expect(level.vocabulary?.concepts[0].label).toBe('Primary');
+    expect(state.fieldGroups[0].label).toBe('Basics');
+    expect(state.fieldGroups[0].collapsed).withContext('U-09').toBeTrue();
   });
 });

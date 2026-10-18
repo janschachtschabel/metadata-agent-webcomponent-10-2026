@@ -25,9 +25,6 @@
     }
   },
   "exclude": [
-    "src/app/app.module.ts",
-    "src/app/components/controls/controls.component.ts",
-    "src/app/components/layouts/index.ts",
     "src/environments/environment.prod.ts"
   ],
   "angularCompilerOptions": {

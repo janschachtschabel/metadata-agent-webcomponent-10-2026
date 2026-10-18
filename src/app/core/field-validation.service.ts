@@ -438,6 +438,11 @@ export class FieldValidationService {
    */
   private validateUrl(value: unknown): ValidationResult {
     const str = String(value).trim();
+    // A space is never part of an address; the browser would accept
+    // "https://kein link" and the repository would store it.
+    if (/\s/.test(str)) {
+      return { valid: false, error: this.i18n.instant('VALIDATION.INVALID_URL') };
+    }
     
     // Auto-add https:// if missing
     let url = str;

@@ -61,11 +61,11 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
     margin-right: 8px;
   }
 
-  &:hover:not(:disabled) {
+  &:hover:not(:disabled):not([aria-disabled='true']) {
     background: $primary-hover !important;
   }
 
-  &:disabled {
+  &:disabled, &[aria-disabled='true'] {
     background: $primary-light !important;
     color: rgba($primary, 0.5) !important;
     box-shadow: none;
@@ -85,7 +85,7 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
     margin-right: 8px;
   }
 
-  &:hover:not(:disabled) {
+  &:hover:not(:disabled):not([aria-disabled='true']) {
     background: color.adjust($primary-light, $lightness: -5%) !important;
   }
 }
@@ -105,11 +105,11 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
     margin-right: 8px;
   }
 
-  &:hover:not(:disabled) {
+  &:hover:not(:disabled):not([aria-disabled='true']) {
     background: color.adjust($surface-container, $lightness: -5%) !important;
   }
 
-  &:disabled {
+  &:disabled, &[aria-disabled='true'] {
     opacity: 0.5;
     box-shadow: none;
   }
@@ -160,7 +160,7 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
       border-radius: 0 !important;
     }
 
-    &:hover:not(:disabled) {
+    &:hover:not(:disabled):not([aria-disabled='true']) {
       background: color.adjust($surface-container, $lightness: -5%) !important;
     }
   }
@@ -204,6 +204,28 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
 
   &:hover {
     background: color.adjust($surface-variant, $lightness: -3%);
+  }
+}
+
+// The button inside a collapsible group heading (APG accordion pattern):
+// looks like the heading text, keeps a visible focus ring.
+@mixin group-toggle {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: start;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 }
 
@@ -291,11 +313,11 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
       margin: 0 !important;
     }
 
-    &:hover:not(:disabled) {
+    &:hover:not(:disabled):not([aria-disabled='true']) {
       background: color.adjust($surface-container, $lightness: -5%);
     }
 
-    &:disabled {
+    &:disabled, &[aria-disabled='true'] {
       opacity: 0.38;
     }
   }
@@ -311,4 +333,15 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+}
+
+/// `$n` columns while the widget is wide enough, fewer as it narrows: each
+/// column keeps at least `$min`. Follows the widget's own width, not the
+/// window's (audit U-14) - in a sidebar or dialog on a wide screen the old
+/// viewport queries kept two to four squeezed columns. `min(100%, ...)` lets a
+/// single column shrink below `$min` instead of overflowing.
+@mixin responsive-columns($n, $gap: 16px, $min: 300px) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, max(#{$min}, calc((100% - #{($n - 1) * $gap}) / #{$n}))), 1fr));
+  gap: 0 $gap;
 }

@@ -37,7 +37,12 @@ widget build and tests:
   - export CHROME_BIN=$(which chromium)
   - npm ci --cache .npm --prefer-offline --no-audit --no-fund
   script:
-  - npx ng test --watch=false --browsers=ChromeHeadlessCI
+  # Known vulnerabilities in what ships in the bundle (audit DEP-02); the dev
+  # tools only run here and are left out.
+  - npm audit --omit=dev --audit-level=high
+  # --code-coverage: the coverage floor in karma.conf.js only applies to a run
+  # that collects coverage.
+  - npx ng test --watch=false --browsers=ChromeHeadlessCI --code-coverage
   - npx ng build --configuration production
   # The deploy step's guard, into a scratch target: no Google Fonts, Vercel or
   # PageShot host in the bundles, every font the stylesheet loads is present.
@@ -47,6 +52,22 @@ widget build and tests:
     expire_in: 1 week
     paths:
     - dist/
+
+# The dev tools (Karma, webpack-dev-server, the Angular build chain) run here
+# and on developer machines, so their advisories matter too (audit DEP-03).
+# Not blocking: on 2026-10-18 npm reported 13 (11 high, 2 moderate) in karma,
+# braces, webpack-dev-server, sockjs and uuid, and every fix it offered was a
+# `--force` downgrade (karma 4, build-angular 0.10) that would break the
+# Angular 21 toolchain. A failing job here is a yellow warning in the pipeline;
+# the shipped bundle stays guarded by the blocking --omit=dev audit above.
+audit dev dependencies:
+  stage: test
+  interruptible: true
+  image: node:22
+  needs: []
+  allow_failure: true
+  script:
+  - npm audit --audit-level=high
 
 sast:
   stage: test

@@ -62,13 +62,12 @@ Das Stylesheet bleibt beim Widget: Schriften registriert es unter eigenen Namen
 Schrift und Icon-Klassen gelten nur innerhalb von `<metadata-agent-canvas>` und
 des eigenen Overlay-Containers (Klasse `metadata-agent-overlays`, für Menüs,
 Datums- und Zeitwähler). Eine Host-Seite, die selbst Angular Material nutzt,
-behält ihre `--mat-*`-Tokens, ihre Textschrift und ihre Icons. Global wirken
-weiterhin: die Regeln für `html`/`body` (Höhe, Ränder), Scrollbars
-(`::-webkit-scrollbar`), der Fokusrahmen (`*:focus-visible`), die Klasse
-`.visually-hidden`, die `--md-*`-Variablen auf `:root`, vier ungenutzte
-`--mat-app-*`-Variablen auf `html` sowie die Material-Hilfsklassen
-`.mat-elevation-z*` und `.mat-app-background` (dieselben Regeln, die ein
-Material-Host selbst mitbringt). Eigene Icons der Host-Seite brauchen eigene
+behält ihre `--mat-*`-Tokens, ihre Textschrift und ihre Icons. Auch die
+`--md-*`-Variablen, Scrollbars und der Fokusrahmen gelten nur im Widget;
+`html`/`body` bleiben unberührt (die eigenständige Seite `src/index.html` setzt
+sie selbst). Global wirken nur die Material-Hilfsklassen `.mat-elevation-z*`
+und `.mat-app-background` – dieselben Regeln, die ein Material-Host selbst
+mitbringt (`src/styles/global-styles.spec.ts` prüft das). Eigene Icons der Host-Seite brauchen eigene
 Icon-Styles — die Beispielseiten binden dafür `examples/demo-icons.css` ein.
 
 ### JS-Bundle einbinden
@@ -233,7 +232,7 @@ Button zum Hochladen der Metadaten ins WLO Repository (via FastAPI-Backend).
 
 **Verhalten:**
 - **Default/Dialog Layout:** Ruft `POST /upload` auf der FastAPI-API auf
-- **Plugin Layout:** Sendet JSON per `postMessage` zurueck an die Browser-Extension
+- **Plugin Layout:** Ruft ebenfalls `POST /upload` auf (ein `postMessage` an die Browser-Extension gibt es nicht)
 
 ### Flat Groups (`flatGroups`)
 
@@ -334,7 +333,13 @@ Fusszeile mit Feld-Statistik und Aktions-Buttons (nur im Default-Layout).
 **Verhalten:**
 - **Kein Attribut:** Alle Komponenten teilen `"default"` (rueckwaertskompatibel)
 - **Gleiche ID:** Geteilter State, Events feuern nur 1× (Primary-Komponente)
-- **Verschiedene IDs:** Komplett isolierter State + eigene Events
+- **Verschiedene IDs:** Eigener Formular-State (Felder, Werte, Läufe) und eigene Events
+
+**Grenze:** Die Verbindung zum Agenten ist nicht pro Instanz. `api-url` und
+`context-name` (samt geladener Schemas) gelten für alle Elemente der Seite –
+das zuletzt gesetzte gewinnt (`ApiService` und `SchemaService` gibt es einmal
+pro Seite). Instanzen mit verschiedenen Agenten oder Schema-Kontexten auf
+derselben Seite werden nicht unterstützt.
 
 ```html
 <!-- API-URL einmalig setzen -->
@@ -611,6 +616,11 @@ canvas.addEventListener('metadataSubmit', (e) => {
 canvas.addEventListener('uploadResult', (e) => {
   console.log('Upload:', e.detail);
   // e.detail = { success: boolean, nodeId?: string, error?: string, duplicate?: boolean, repositoryUrl?: string }
+  // error: bei einer Antwort mit HTTP-Fehler ein lesbarer Text in der Widget-
+  // Sprache – die Ursache (error.message des Agenten, sonst detail), nach einer
+  // Zeitüberschreitung, ob der Node verworfen wurde oder noch existiert, und am
+  // Ende die Anfrage-ID, z. B. "… (Anfrage-ID: 3f2a…)". Seit 3.0.0; vorher kam
+  // `detail` unverändert (bei 422 eine Liste). Zum Auswerten nicht parsen.
 });
 ```
 
@@ -783,7 +793,13 @@ Bei Instanz-Wechseln loggt die Komponente:
 src/app/
 ├── core/                              # Services
 │   ├── api.service.ts                 # HTTP-Kommunikation mit API (+Upload)
+│   ├── api-url.ts                     # Ermittlung der Agent-URL
+│   ├── object-shape.ts                # Objektfelder laut Schema
+│   ├── widget-overlay-container.ts    # Markiert den Overlay-Container (Theme für Menüs, Picker)
 │   ├── canvas.service.ts              # State-Management (instance-aware)
+│   ├── canvas-fields.ts               # Felder: gefüllt, zählbar, Gruppierung
+│   ├── canvas-feedback.ts             # Fehlertext, Antwortprüfung, Warnungen
+│   ├── canvas-metadata.ts             # Metadaten für Neu-Extraktion und Export
 │   ├── instance-registry.ts           # Multi-Instanz State-Registry
 │   ├── schema.service.ts              # Schema-Laden
 │   ├── shape-expander.service.ts      # Subfield-Expansion
@@ -793,16 +809,21 @@ src/app/
 │   └── i18n.service.ts                # Sprach-Management (DE/EN)
 ├── components/
 │   ├── canvas/                        # Orchestrator (leitet an Layout weiter)
+│   │   └── layout-host.ts             # Erzeugt das Layout im Code (eine Bindungsliste)
 │   ├── field/                         # Einzelfeld-Komponente
 │   ├── shared/
 │   │   ├── input-area/                # Shared: Texteingabe + Modus-Umschalter
-│   │   └── status-bar/                # Shared: Statusleiste + Fortschritt
+│   │   ├── status-bar/                # Shared: Statusleiste + Fortschritt
+│   │   ├── preview-thumbnail/         # Shared: Vorschaubild
+│   │   ├── vocab-tree-picker/         # Shared: Vokabularauswahl (Dialog)
+│   │   └── widget-notice/             # Shared: Meldungen und Rückfragen
 │   ├── layouts/
+│   │   ├── layout-base.ts             # Gemeinsame Gruppenlogik der Layouts
 │   │   ├── default-layout/            # Standard (vollstaendig)
+│   │   ├── clean-layout/              # Rahmenlos, minimal
 │   │   ├── plugin-layout/             # Browser Extension (kompakt)
 │   │   ├── dialog-layout/             # Redaktionsdialog
 │   │   ├── detail-layout/             # Detail/Preview (multi-column)
-│   │   ├── metadatenpruefdialog-layout/
 │   │   ├── prueftisch-layout/         # Prueftisch
 │   │   ├── prueftisch-org-layout/     # Prueftisch Org (organisational)
 │   │   └── _shared-layout-styles.scss # Gemeinsame SCSS Mixins
@@ -850,7 +871,28 @@ npm run build          # Produktions-Build (dist/ mit Hashing)
 docker build -t metadata-canvas . && docker run -p 80:80 metadata-canvas
 ```
 
-### Build fuer Browser-Extension + API-Auslieferung
+### Auslieferung über den Agenten (`/widget/dist/`)
+
+`scripts/build-elements.js` legt den Produktions-Build in das Widget-Verzeichnis
+des Agenten: Bundles ohne Hash plus `.gz`, die Schriften mit ihren Lizenztexten
+(`dist/fonts/OFL.txt`, `LICENSE-material-icons.txt`), `3rdpartylicenses.txt`,
+`LICENSE`, `NOTICE` und `assets/i18n/`. Vorher prüft es den Build (keine
+externen Hosts, alle Bundles, Schriften und Lizenztexte vorhanden) und die
+Version des Ziel-Agenten (`pyproject.toml` über `src/static/widget`): Eine
+andere Hauptversion lehnt es ab, außer mit `--force`. Es schreibt erst, wenn
+alle Prüfungen bestanden sind, und nennt das Ziel.
+
+```bash
+# Build und Deploy in den Agenten 3.x. Ziel immer angeben: der Standard ist
+# ../metadata-agent/src/static/widget, in diesem Arbeitsbereich der Agent 2.x.
+npm run build:elements -- --target=../metadata-agent-3/src/static/widget
+
+# oder in zwei Schritten
+npx ng build --configuration production
+node scripts/build-elements.js --target=../metadata-agent-3/src/static/widget
+```
+
+### Build fuer die Browser-Extension
 
 Die `extension`-Konfiguration erzeugt Dateien **ohne Hashing** (wichtig fuer Extension-Einbindung):
 
@@ -859,15 +901,7 @@ Die `extension`-Konfiguration erzeugt Dateien **ohne Hashing** (wichtig fuer Ext
 npx ng build --configuration extension
 # -> dist-extension/main.js, polyfills.js, runtime.js, styles.css, fonts/
 
-# 2. In API kopieren (fuer /widget/dist/ Auslieferung)
-copy dist-extension\main.js      ..\metadata-agent-api\src\static\widget\dist\
-copy dist-extension\polyfills.js  ..\metadata-agent-api\src\static\widget\dist\
-copy dist-extension\runtime.js    ..\metadata-agent-api\src\static\widget\dist\
-copy dist-extension\styles.css    ..\metadata-agent-api\src\static\widget\dist\
-xcopy /I /Y dist-extension\fonts  ..\metadata-agent-api\src\static\widget\dist\fonts
-copy dist-extension\assets\i18n\* ..\metadata-agent-api\src\static\widget\assets\i18n\
-
-# 3. In Browser-Plugin kopieren
+# 2. In Browser-Plugin kopieren
 copy dist-extension\main.js      ..\metadata-browser-plugin-fuerAPI\webcomponent\
 copy dist-extension\polyfills.js  ..\metadata-browser-plugin-fuerAPI\webcomponent\
 copy dist-extension\runtime.js    ..\metadata-browser-plugin-fuerAPI\webcomponent\
@@ -877,15 +911,14 @@ copy dist-extension\assets\i18n\* ..\metadata-browser-plugin-fuerAPI\webcomponen
 ```
 
 `styles.css` lädt die Schriften relativ aus `fonts/` daneben — fehlt der Ordner,
-erscheinen Icons als Text (`expand_more` statt Pfeil). Für die API erledigt
-`npm run build:elements` Schritt 1 und 2 samt Prüfung in einem Durchgang.
+erscheinen Icons als Text (`expand_more` statt Pfeil).
 
 ### Build-Konfigurationen (angular.json)
 
 | Konfiguration | Output | Hashing | Verwendung |
 |---------------|--------|---------|------------|
-| `production` | `dist/` | Ja | Standalone, statisches Hosting, Container |
-| `extension` | `dist-extension/` | Nein | Browser-Plugin, API-Widget |
+| `production` | `dist/` | Ja | Standalone, statisches Hosting, Container, API-Widget (`build-elements.js` entfernt die Hashes) |
+| `extension` | `dist-extension/` | Nein | Browser-Plugin |
 | `development` | — | — | Lokale Entwicklung (`ng serve`) |
 
 ## Technologie-Stack

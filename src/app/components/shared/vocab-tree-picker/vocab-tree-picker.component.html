@@ -1,29 +1,39 @@
 <!-- Vocabulary Tree Picker - Hierarchical selection with search -->
 <div class="vocab-tree-picker" *ngIf="open">
-  <div class="picker-backdrop" (click)="close()"></div>
-  
-  <div class="picker-panel" [ngStyle]="panelStyle">
+  <div class="picker-backdrop" (click)="close()" aria-hidden="true"></div>
+
+  <!-- Modal: focus stays inside until it closes (Escape, close button, backdrop) -->
+  <div class="picker-panel"
+       [ngStyle]="panelStyle"
+       [attr.id]="panelId"
+       role="dialog"
+       aria-modal="true"
+       [attr.aria-label]="label || null"
+       cdkTrapFocus
+       (keydown.escape)="close(); $event.stopPropagation()">
     <!-- Header: Search + Close -->
     <div class="picker-header">
       <mat-form-field appearance="outline" class="filter-field" subscriptSizing="dynamic">
         <mat-label>{{ 'FIELD.VOCAB_FILTER' | translate }}</mat-label>
-        <mat-icon matPrefix>search</mat-icon>
+        <mat-icon matPrefix aria-hidden="true">search</mat-icon>
         <input matInput
                #filterInput
                [(ngModel)]="filterText"
                (ngModelChange)="onFilterChange()"
                autocomplete="off">
-        <button *ngIf="filterText" matIconSuffix mat-icon-button (click)="clearFilter()">
-          <mat-icon>close</mat-icon>
+        <button *ngIf="filterText" type="button" matIconSuffix mat-icon-button (click)="clearFilter()"
+                [attr.aria-label]="'FIELD.VOCAB_CLEAR_FILTER' | translate">
+          <mat-icon aria-hidden="true">close</mat-icon>
         </button>
       </mat-form-field>
-      <button class="close-btn" mat-icon-button (click)="close()" aria-label="Close">
-        <mat-icon>close</mat-icon>
+      <button class="close-btn" type="button" mat-icon-button (click)="close()"
+              [attr.aria-label]="'COMMON.CLOSE' | translate">
+        <mat-icon aria-hidden="true">close</mat-icon>
       </button>
     </div>
 
-    <!-- Tree List -->
-    <div class="tree-list" role="listbox">
+    <!-- Tree List: a group of checkboxes (a listbox may not contain controls) -->
+    <div class="tree-list" role="group" [attr.aria-label]="label || null">
       <div *ngFor="let node of flatVisibleNodes; trackBy: trackByUri"
            class="tree-node"
            [class.depth-0]="node.depth === 0"
@@ -33,16 +43,16 @@
            [class.has-children]="node.children.length > 0"
            [class.selected]="isSelected(node)"
            [class.filter-match]="node.matchesFilter"
-           [style.padding-left.px]="16 + node.depth * 24"
-           role="option"
-           [attr.aria-selected]="isSelected(node)">
+           [style.padding-left.px]="16 + node.depth * 24">
 
         <!-- Expand/Collapse Arrow -->
         <button *ngIf="node.children.length > 0"
+                type="button"
                 class="expand-btn"
                 (click)="toggleExpand(node, $event)"
-                [attr.aria-label]="node.expanded ? 'Collapse' : 'Expand'">
-          <mat-icon>{{ node.expanded ? 'expand_more' : 'chevron_right' }}</mat-icon>
+                [attr.aria-expanded]="node.expanded"
+                [attr.aria-label]="(node.expanded ? 'FIELD.VOCAB_COLLAPSE' : 'FIELD.VOCAB_EXPAND') | translate">
+          <mat-icon aria-hidden="true">{{ node.expanded ? 'expand_more' : 'chevron_right' }}</mat-icon>
         </button>
         <span *ngIf="node.children.length === 0" class="expand-spacer"></span>
 

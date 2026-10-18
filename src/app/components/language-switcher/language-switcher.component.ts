@@ -3,20 +3,25 @@ import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { TranslateModule } from '@ngx-translate/core';
 import { I18nService } from '../../core/i18n.service';
 
 @Component({
   selector: 'app-language-switcher',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, MatTooltipModule],
+  imports: [CommonModule, MatButtonModule, MatIconModule, MatTooltipModule, TranslateModule],
+  // The name starts with the visible "DE"/"EN" (WCAG 2.5.3) and says what the
+  // button does; a tooltip is no accessible name (U-16). The switch texts are
+  // phrased in the target language on purpose.
   template: `
-    <button 
+    <button
       mat-button
       class="lang-button"
       (click)="toggleLanguage()"
-      [matTooltip]="currentLang === 'de' ? 'Switch to English' : 'Zu Deutsch wechseln'">
-      <mat-icon class="lang-icon">language</mat-icon>
-      <span class="lang-label">{{ currentLang === 'de' ? 'DE' : 'EN' }}</span>
+      [matTooltip]="switchKey | translate"
+      [attr.aria-label]="label + ' – ' + (switchKey | translate)">
+      <mat-icon class="lang-icon" aria-hidden="true">language</mat-icon>
+      <span class="lang-label">{{ label }}</span>
     </button>
   `,
   styles: [`
@@ -52,6 +57,14 @@ import { I18nService } from '../../core/i18n.service';
 export class LanguageSwitcherComponent {
   get currentLang(): string {
     return this.i18n.currentLang;
+  }
+
+  get label(): string {
+    return this.currentLang === 'de' ? 'DE' : 'EN';
+  }
+
+  get switchKey(): string {
+    return this.currentLang === 'de' ? 'LANGUAGE.SWITCH_TO_ENGLISH' : 'LANGUAGE.SWITCH_TO_GERMAN';
   }
 
   constructor(private i18n: I18nService) {}

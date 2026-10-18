@@ -1,0 +1,55 @@
+Metadata Agent web component (metadata-agent-canvas)
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product bundles the third-party software and fonts listed below. The
+production build (`ng build`) writes the full license texts of the bundled
+JavaScript packages to dist/3rdpartylicenses.txt.
+
+
+JavaScript, bundled into dist/main.js and dist/polyfills.js
+-----------------------------------------------------------
+
+Angular (@angular/animations, @angular/cdk, @angular/common, @angular/core,
+@angular/elements, @angular/forms, @angular/material,
+@angular/platform-browser)
+  License: MIT
+  Copyright (c) 2010-2026 Google LLC. https://angular.dev/license
+
+zone.js
+  License: MIT
+  Copyright (c) 2010-2025 Google LLC. https://angular.dev/license
+
+@ngx-translate/core
+  License: MIT
+  Copyright (c) 2018 Olivier Combe
+  Copyright (c) 2024 Andreas Löw / CodeAndWeb GmbH
+
+ngx-mat-timepicker
+  License: MIT (as declared in its package.json; the package ships no
+  license file)
+
+ts-luxon (dependency of ngx-mat-timepicker)
+  License: MIT
+  Copyright (c) 2025 Tony Samperi and other contributors
+
+RxJS
+  License: Apache-2.0
+  Copyright (c) 2015-2018 Google, Inc., Netflix, Inc., Microsoft Corp. and
+  contributors
+
+
+Fonts, copied into dist/fonts/
+------------------------------
+
+Material Icons (material-icons.woff2, material-icons-outlined.woff2),
+from the npm package "material-icons"
+  License: Apache-2.0, full text in dist/fonts/LICENSE-material-icons.txt
+  Material design icons are created by Google.
+
+Roboto (roboto-latin and roboto-latin-ext, weights 300, 400 and 500),
+from the npm package "@fontsource/roboto"
+  License: SIL Open Font License, Version 1.1 (OFL-1.1), full text in
+  dist/fonts/OFL.txt (copied with the fonts, as OFL section 2 requires)
+  Copyright 2011 The Roboto Project Authors
+  (https://github.com/googlefonts/roboto-classic)

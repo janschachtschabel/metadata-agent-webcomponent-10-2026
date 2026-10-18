@@ -75,7 +75,28 @@ export class SchemaService {
 
   // ===== Context Management =====
 
+  /**
+   * The context being set, while it is. A core schema requested meanwhile
+   * (metadata-input arrives before ngOnInit, a language switch at startup)
+   * waits for it: falling back to 'default' could overwrite the configured
+   * context-name that was set at the same moment.
+   */
+  private pendingContext: Promise<void> | null = null;
+
+  /** The core schema request that is out, per context; asked once, not per caller. */
+  private coreLoad: { context: ContextInfo; promise: Promise<CoreSchema> } | null = null;
+
   async setContext(name: string, version?: string): Promise<void> {
+    const pending = this.applyContext(name, version);
+    this.pendingContext = pending;
+    try {
+      await pending;
+    } finally {
+      if (this.pendingContext === pending) this.pendingContext = null;
+    }
+  }
+
+  private async applyContext(name: string, version?: string): Promise<void> {
     await this.ensureReady();
 
     // Use provided values or defaults from environment
@@ -91,7 +112,9 @@ export class SchemaService {
 
     // Clear cached schemas
     this.coreSchema = null;
+    this.coreLoad = null;
     this.contentTypeSchemas.clear();
+    this.contentTypeGroups.clear();
 
     this.config.info(`Context set: ${contextName} v${contextVersion}`);
   }
@@ -110,19 +133,31 @@ export class SchemaService {
     if (this.coreSchema) return this.coreSchema;
     
     await this.ensureReady();
-    
+    if (this.pendingContext) {
+      await this.pendingContext;
+    }
     if (!this.currentContext) {
       await this.setContext('default');
     }
 
+    const context = this.currentContext!;
+    if (this.coreLoad?.context !== context) {
+      const promise = this.api.getSchema(context.key, context.version, 'core.json').then(response => {
+        const core: CoreSchema = { fields: response.fields as FieldDefinition[], groups: (response as any).groups || [] };
+        // Cached only for the context it belongs to; a switch meanwhile asks again.
+        if (this.currentContext === context) this.coreSchema = core;
+        this.config.debug(`Core schema loaded from API: ${core.fields.length} fields`);
+        return core;
+      });
+      this.coreLoad = { context, promise };
+      // A failure is not kept: the next call asks again.
+      promise.catch(() => {
+        if (this.coreLoad?.promise === promise) this.coreLoad = null;
+      });
+    }
+
     try {
-      const context = this.currentContext!.key;
-      const version = this.currentContext!.version;
-      
-      const response = await this.api.getSchema(context, version, 'core.json');
-      this.coreSchema = { fields: response.fields as FieldDefinition[], groups: (response as any).groups || [] };
-      this.config.debug(`Core schema loaded from API: ${this.coreSchema.fields.length} fields`);
-      return this.coreSchema;
+      return await this.coreLoad!.promise;
     } catch (error) {
       this.config.error('Failed to load core schema from API', error);
       throw error;

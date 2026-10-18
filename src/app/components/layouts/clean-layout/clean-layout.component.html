@@ -53,20 +53,26 @@
 
   <!-- ===== FIELD GROUPS ===== -->
   <section class="fields-section" *ngIf="_displayGroups.length">
-    <ng-container *ngFor="let group of _displayGroups; trackBy: trackByGroupId">
-      <div class="field-group" 
+    <ng-container *ngFor="let group of _displayGroups; trackBy: trackByGroupId; let i = index">
+      <div class="field-group"  
            *ngIf="(flatGroups || (group.isCore && showCoreFields) || (!group.isCore && showSpecialFields)) && (!readonly || (_visibleFieldsMap.get(group.id)?.length ?? 0) > 0)">
         
         <!-- Group Header -->
         <div class="group-header" (click)="group.collapsed = !group.collapsed">
           <mat-icon class="group-icon">{{ group.icon || 'folder' }}</mat-icon>
-          <h3>{{ group.label }}</h3>
+          <h3>
+            <button type="button" class="group-toggle"
+                    [attr.aria-expanded]="!group.collapsed"
+                    [attr.aria-controls]="group.collapsed ? null : _uid + '-g' + i"
+                    (click)="$event.stopPropagation(); group.collapsed = !group.collapsed">{{ group.label }}</button>
+          </h3>
           <span class="count">{{ _filledCountMap.get(group.id) ?? 0 }}/{{ _flatCountMap.get(group.id) ?? 0 }}</span>
           <mat-icon class="collapse-icon">{{ group.collapsed ? 'expand_more' : 'expand_less' }}</mat-icon>
         </div>
         
         <!-- Group Fields (multi-column grid) -->
         <div class="group-fields"
+             [id]="_uid + '-g' + i"
              [class.columns-2]="columns === 2"
              [class.columns-3]="columns === 3"
              [class.columns-4]="columns === 4"
@@ -101,7 +107,7 @@
         </div>
         <button 
           mat-icon-button
-          [matMenuTriggerFor]="floatingCtMenu">
+          [matMenuTriggerFor]="floatingCtMenu" [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
           <mat-icon>expand_more</mat-icon>
         </button>
       </div>

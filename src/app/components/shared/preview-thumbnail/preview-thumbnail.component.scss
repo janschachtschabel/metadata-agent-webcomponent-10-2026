@@ -6,6 +6,12 @@
   margin-bottom: 12px;
 
   .preview-header {
+    // a button that looks like the header it replaces
+    width: 100%;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: left;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -19,6 +25,11 @@
 
     &:hover {
       background: rgba(0, 0, 0, 0.04);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--md-primary, #0062ac);
+      outline-offset: -2px;
     }
 
     mat-icon {

@@ -33,30 +33,15 @@
   padding: 0 15px 16px;
 
   &.group-columns-4 {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0 24px;
-
-    @media (max-width: 1280px) { grid-template-columns: repeat(3, 1fr); }
-    @media (max-width: 1024px) { grid-template-columns: repeat(2, 1fr); }
-    @media (max-width: 640px)  { grid-template-columns: 1fr; }
+    @include shared.responsive-columns(4, 24px);
   }
 
   &.group-columns-3 {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0 24px;
-
-    @media (max-width: 1024px) { grid-template-columns: repeat(2, 1fr); }
-    @media (max-width: 640px)  { grid-template-columns: 1fr; }
+    @include shared.responsive-columns(3, 24px);
   }
 
   &.group-columns-2 {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0 24px;
-
-    @media (max-width: 640px) { grid-template-columns: 1fr; }
+    @include shared.responsive-columns(2, 24px);
   }
 }
 
@@ -86,25 +71,13 @@
 
     // Field-level columns (used when flatGroups merges all into one group)
     &.columns-2 {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0 24px;
-      @media (max-width: 640px) { grid-template-columns: 1fr; }
+      @include shared.responsive-columns(2, 24px);
     }
     &.columns-3 {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0 24px;
-      @media (max-width: 1024px) { grid-template-columns: repeat(2, 1fr); }
-      @media (max-width: 640px) { grid-template-columns: 1fr; }
+      @include shared.responsive-columns(3, 24px);
     }
     &.columns-4 {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 0 24px;
-      @media (max-width: 1280px) { grid-template-columns: repeat(3, 1fr); }
-      @media (max-width: 1024px) { grid-template-columns: repeat(2, 1fr); }
-      @media (max-width: 640px) { grid-template-columns: 1fr; }
+      @include shared.responsive-columns(4, 24px);
     }
   }
 }

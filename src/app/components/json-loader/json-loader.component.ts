@@ -21,7 +21,8 @@ import { TranslateModule } from '@ngx-translate/core';
       mat-icon-button
       class="control-button"
       (click)="fileInput.click()"
-      [matTooltip]="'CONTROLS.LOAD_JSON' | translate">
+      [matTooltip]="'CONTROLS.LOAD_JSON' | translate"
+      [attr.aria-label]="'CONTROLS.LOAD_JSON' | translate">
       <mat-icon>folder_open</mat-icon>
     </button>
   `,
@@ -33,7 +34,7 @@ import { TranslateModule } from '@ngx-translate/core';
 })
 export class JsonLoaderComponent {
   @Output() jsonLoaded = new EventEmitter<any>();
-  @Output() loadError = new EventEmitter<string>();
+  @Output() loadError = new EventEmitter<void>();
 
   async onFileSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
@@ -47,7 +48,7 @@ export class JsonLoaderComponent {
       this.jsonLoaded.emit(json);
     } catch (error) {
       console.error('JSON parse error:', error);
-      this.loadError.emit('Ungültige JSON-Datei');
+      this.loadError.emit();
     }
     
     // Reset input for re-selection of same file

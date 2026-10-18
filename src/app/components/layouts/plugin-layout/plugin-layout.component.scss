@@ -116,10 +116,7 @@
 
   .group-fields {
     &.columns-2 {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0 8px;
-      @media (max-width: 500px) { grid-template-columns: 1fr; }
+      @include shared.responsive-columns(2, 8px);
     }
 
     ::ng-deep app-field {
@@ -210,6 +207,11 @@
       &:hover:not(:disabled) {
         animation: pulse-glow 1.5s ease-in-out infinite;
         background: #a5d6a7 !important;
+
+        // no endless motion for those who asked for less (U-16)
+        @media (prefers-reduced-motion: reduce) {
+          animation: none;
+        }
       }
     }
   }

@@ -1,12 +1,4 @@
-import { 
-  Component, 
-  Input, 
-  Output, 
-  EventEmitter, 
-  ChangeDetectionStrategy,
-  OnChanges,
-  SimpleChanges
-} from '@angular/core';
+import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TranslateModule } from '@ngx-translate/core';
@@ -20,11 +12,13 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
-import { CanvasState, ContentType, CanvasFieldState, FieldGroup, FieldStatus } from '../../../shared/models/canvas.models';
+import { ContentType, FieldStatus } from '../../../shared/models/canvas.models';
+import { LayoutBase } from '../layout-base';
 import { FieldComponent } from '../../field/field.component';
 import { JsonLoaderComponent } from '../../json-loader/json-loader.component';
 import { LanguageSwitcherComponent } from '../../language-switcher/language-switcher.component';
 import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/preview-thumbnail.component';
+import { uniqueId } from '../../../shared/unique-id';
 
 /**
  * Default Layout Component
@@ -62,9 +56,10 @@ import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/previe
   styleUrls: ['./default-layout.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DefaultLayoutComponent implements OnChanges {
+export class DefaultLayoutComponent extends LayoutBase {
   // Data from parent
-  @Input() state: CanvasState | null = null;
+  /** Prefix of the ids aria-controls points at; unique per instance. */
+  readonly _uid = uniqueId('layout');
   @Input() contentTypes: ContentType[] = [];
   @Input() userText = '';
   @Input() sourceUrl = '';
@@ -80,8 +75,6 @@ export class DefaultLayoutComponent implements OnChanges {
   // Element visibility (can override defaults)
   @Input() showInputArea = true;
   @Input() showStatusBar = true;
-  @Input() showCoreFields = true;
-  @Input() showSpecialFields = true;
   @Input() showFooter = true;
   @Input() showFloatingControls = true;
   @Input() showFieldActions = true;
@@ -92,59 +85,19 @@ export class DefaultLayoutComponent implements OnChanges {
   @Input() showLanguageSwitcher = true;
   @Input() showContentType = true;
   @Input() showResetButton = true;
-  @Input() readonly = false;
   @Input() highlightAi = true;
-  @Input() flatGroups = false;
   @Input() showPreview = true;
   @Input() screenshotEnabled = true;
   
-  // Cached computed values (recomputed in ngOnChanges, not every CD cycle)
-  _displayGroups: FieldGroup[] = [];
+  /** True while an upload runs: the upload button is aria-disabled and keeps its focus (U-02, U-05). */
+  @Input() uploading = false;
+
   _progressPercent = 0;
   _requiredStatus = { filled: 0, total: 0 };
-  /** Pre-computed visible fields per group (avoids recreating arrays in *ngFor) */
-  _visibleFieldsMap = new Map<string, CanvasFieldState[]>();
-  _filledCountMap = new Map<string, number>();
-  _flatCountMap = new Map<string, number>();
-  
-  private mergeGroupsBySchema(groups: FieldGroup[]): FieldGroup[] {
-    if (groups.length === 0) return [];
-    const allFields: CanvasFieldState[] = [];
-    let schemaLabel = '';
-    let schemaIcon = '';
-    for (const group of groups) {
-      if (group.isCore && !this.showCoreFields) continue;
-      if (!group.isCore && !this.showSpecialFields) continue;
-      allFields.push(...group.fields);
-      if (!group.isCore && !schemaLabel) {
-        schemaLabel = group.schemaName;
-        schemaIcon = group.icon || '';
-      }
-    }
-    if (allFields.length === 0) return [];
-    return [{
-      id: 'flat-all',
-      label: this.state?.contentTypeLabel || schemaLabel || 'Felder',
-      icon: schemaIcon,
-      schemaName: schemaLabel || 'Core',
-      fields: allFields,
-      isCore: false
-    }];
-  }
-  
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['state'] || changes['flatGroups'] || changes['showCoreFields'] || changes['showSpecialFields'] || changes['readonly']) {
-      this._displayGroups = this.computeDisplayGroups();
-      this._progressPercent = this.computeProgressPercent();
-      this._requiredStatus = this.computeRequiredFieldsStatus();
-      this.precomputeGroupData();
-    }
-  }
 
-  private computeDisplayGroups(): FieldGroup[] {
-    if (!this.state?.fieldGroups) return [];
-    if (!this.flatGroups) return this.state.fieldGroups;
-    return this.mergeGroupsBySchema(this.state.fieldGroups);
+  protected override onGroupsChanged(): void {
+    this._progressPercent = this.computeProgressPercent();
+    this._requiredStatus = this.computeRequiredFieldsStatus();
   }
 
   private computeProgressPercent(): number {
@@ -168,19 +121,6 @@ export class DefaultLayoutComponent implements OnChanges {
     return { filled, total };
   }
 
-  private precomputeGroupData(): void {
-    this._visibleFieldsMap.clear();
-    this._filledCountMap.clear();
-    this._flatCountMap.clear();
-    for (const group of this._displayGroups) {
-      const visible = this.getVisibleFields(group.fields);
-      this._visibleFieldsMap.set(group.id, visible);
-      const flat = this.getFlattenedFields(group.fields);
-      this._filledCountMap.set(group.id, flat.filter(f => f.status === FieldStatus.FILLED).length);
-      this._flatCountMap.set(group.id, flat.length);
-    }
-  }
-
   // Events
   @Output() userTextChange = new EventEmitter<string>();
   @Output() sourceUrlChange = new EventEmitter<string>();
@@ -198,48 +138,19 @@ export class DefaultLayoutComponent implements OnChanges {
   @Output() upload = new EventEmitter<void>();
   @Output() dismissError = new EventEmitter<void>();
   @Output() dismissWarning = new EventEmitter<void>();
+  @Output() jsonLoadError = new EventEmitter<void>();
   @Output() screenshotToggle = new EventEmitter<boolean>();
   
-  // Track functions
-  trackByFieldId(index: number, field: CanvasFieldState): string {
-    return field.fieldId;
-  }
-  
-  trackByGroupId(index: number, group: FieldGroup): string {
-    return group.id;
-  }
-  
-  // Helpers (kept for backward compat, but templates should use cached _ properties)
-  getFilledCount(group: FieldGroup): number {
-    return this._filledCountMap.get(group.id) ?? 0;
-  }
-  
-  getFlattenedFields(fields: CanvasFieldState[]): CanvasFieldState[] {
-    const flattened: CanvasFieldState[] = [];
-    
-    for (const field of fields) {
-      if (field.isParent && field.subFields && field.subFields.length > 0) {
-        flattened.push(...field.subFields);
-      } else if (!field.isParent) {
-        flattened.push(field);
-      }
+  /**
+   * Enter adds a line, as in any text box; it used to be swallowed without any
+   * effect (U-16). Ctrl+Enter (Cmd+Enter) starts the extraction.
+   */
+  onTextKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)
+        && this.userText.trim() && !this.state?.isExtracting) {
+      event.preventDefault();
+      this.startExtraction.emit();
     }
-    
-    return flattened;
-  }
-  
-  getVisibleFields(fields: CanvasFieldState[]): CanvasFieldState[] {
-    const flat = this.getFlattenedFields(fields);
-    if (!this.readonly) return flat;
-    return flat.filter(f => {
-      if (f.value === null || f.value === undefined || f.value === '') return false;
-      if (Array.isArray(f.value) && f.value.length === 0) return false;
-      return true;
-    });
-  }
-  
-  onEnterKey(event: Event): void {
-    event.preventDefault();
   }
   
   onDismissError(): void {

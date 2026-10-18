@@ -95,7 +95,7 @@
         </div>
         <button 
           mat-icon-button
-          [matMenuTriggerFor]="floatingCtMenu">
+          [matMenuTriggerFor]="floatingCtMenu" [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
           <mat-icon>expand_more</mat-icon>
         </button>
       </div>
@@ -115,9 +115,10 @@
       <button 
         mat-icon-button
         *ngIf="showUploadButton"
-        [disabled]="!state?.filledFields"
+        [disabled]="!state?.filledFields || uploading"
+        [disabledInteractive]="uploading"
         (click)="upload.emit()"
-        [matTooltip]="'CONTROLS.UPLOAD' | translate">
+        [matTooltip]="'CONTROLS.UPLOAD' | translate" [attr.aria-label]="'CONTROLS.UPLOAD' | translate">
         <mat-icon>cloud_upload</mat-icon>
       </button>
       <button 
@@ -125,14 +126,14 @@
         *ngIf="showSaveButton"
         [disabled]="!state?.filledFields"
         (click)="submit.emit()"
-        [matTooltip]="'CONTROLS.SAVE' | translate">
+        [matTooltip]="'CONTROLS.SAVE' | translate" [attr.aria-label]="'CONTROLS.SAVE' | translate">
         <mat-icon>save</mat-icon>
       </button>
       <button 
         mat-icon-button
         *ngIf="showResetButton"
         (click)="reset.emit()"
-        [matTooltip]="'CONTROLS.RESET' | translate">
+        [matTooltip]="'CONTROLS.RESET' | translate" [attr.aria-label]="'CONTROLS.RESET' | translate">
         <mat-icon>refresh</mat-icon>
       </button>
     </div>

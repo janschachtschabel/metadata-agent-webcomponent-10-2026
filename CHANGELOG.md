@@ -1,5 +1,209 @@
 # Änderungen
 
+## 3.0.0 — 2026-10-17 — Neuer Aufbau, Korrekturen aus dem Audit
+
+Gehört zum Agenten 3.0.0. Oberfläche und Texte bleiben gleich; das Bundle
+meldet 3.0.0 und lädt seine Texte als `/widget/i18n/<sprache>.json?v=3.0.0`.
+
+Korrekturen aus dem Audit vom 18.10. (`metadata-agent/docs/audits/2026-10-18-audit-3.0.0-nachkorrektur.md`):
+
+- **Eingaben während einer Extraktion bleiben (L-01):** Was während eines
+  laufenden Laufs in ein Feld eingetragen wird, ersetzt die KI-Antwort nicht
+  mehr; das Feld bleibt ein Nutzerwert, auch wenn ein Typwechsel das Formular
+  neu aufbaut.
+- **Upload (U-02, U-11):** Der Upload-Button ist gesperrt, solange ein Upload
+  läuft (kein doppelter Node per Doppelklick). Der wiederholte Upload nach der
+  Dubletten-Rückfrage meldet Erfolg oder Fehler. Eine unlesbare JSON-Datei
+  wird im Widget gemeldet (übersetzt) statt nur in der Konsole.
+- **Sprachwechsel (U-04, U-14):** Feldnamen, Gruppen und Vokabular wechseln die
+  Sprache sofort; Datumsangaben erscheinen auf Englisch als TT/MM/JJJJ, die
+  Kalenderbeschriftung folgt der Sprache. Die Widget-Wurzel trägt `lang`.
+- **Mehrere Elemente einer Instanz (U-07):** Fällt das Element weg, das die
+  Ereignisse sendet, übernimmt das nächste – vorher blieben alle stumm.
+- **Eingeklappte Gruppen bleiben eingeklappt (U-09)**, auch nach einer
+  Extraktion, einer Eingabe oder im Modus `flat-groups`.
+- **Text bleibt bei Fehlern (U-10):** Der Beschreibungstext wird erst nach einer
+  erfolgreichen Extraktion geleert.
+- **Barrierefreiheit (U-12, U-13, U-16):** Pflichtfelder, ungültige Werte und
+  der Hinweistext darunter sind programmatisch verknüpft (`aria-required`,
+  `aria-invalid`, `aria-describedby`). Das Vorschaubild öffnet per Tastatur,
+  der Alt-Text ist übersetzt. KI-Werte sind bei `highlight-ai` auch per Symbol
+  und Screenreader-Text markiert. Der Sprachknopf hat einen Namen. Die
+  Puls-Animation entfällt bei `prefers-reduced-motion`.
+- **Bedienung:** Enter fügt im Beschreibungsfeld eine neue Zeile ein (wurde
+  verschluckt); Strg+Enter (Cmd+Enter) startet die Extraktion. Das Zeitfeld
+  nimmt getippte Uhrzeiten (HH:MM) an; die Uhr öffnet über den Button.
+  Enter in einem Mehrfachfeld (z. B. Schlagwörter) leert das Eingabefeld auch
+  dann, wenn es direkt nach dem Tippen kommt; vorher blieb das Wort neben dem
+  neuen Chip stehen (bestand schon in 2.1.1).
+- **Reflow (U-14):** Die Spalten richten sich nach der Breite des Widgets statt
+  des Fensters; die Vokabularauswahl passt in 320 px.
+- **Vorschaubilder ohne Referrer (U-15).**
+- **Aufräumen (M-02, M-03, M-06):** Die Gruppenlogik der sieben Layouts liegt in
+  einer gemeinsamen Basisklasse. Der `IntegrationModeService` (lief beim Start
+  ohne Wirkung, `postMessage` an `'*'` ohne Aufrufer) ist entfernt. Die zehn
+  fehlenden `LAYOUT`-Texte sind ergänzt, 108 nirgends verwendete Texte
+  entfernt, feste Texte („Felder“, „Core“, JSON-Fehler) übersetzt.
+- **Tests und Abhängigkeiten (T-07, DEP-03, DEP-04):** Karma hat eine
+  Coverage-Untergrenze, die CI misst Coverage. Ein nicht blockierender
+  CI-Job prüft auch die Dev-Abhängigkeiten. `LICENSE` (Apache-2.0) und
+  `NOTICE` mit den gebündelten Drittkomponenten; `package-lock.json` trägt
+  die Lizenz ebenfalls.
+
+Nachkorrektur aus dem Review vom 18.10.:
+
+- **Ein Layout-Aufruf statt sieben (M-02):** Das Canvas-Template wiederholte
+  die rund 40 Bindungen für jedes der sieben Layouts. Der Canvas erzeugt das
+  Layout jetzt im Code (`layout-host.ts`) aus einer einzigen Bindungsliste;
+  jedes Layout bekommt genau die Ein- und Ausgänge, die es deklariert. Das
+  Template schrumpft von 307 auf 9 Zeilen. Verhalten unverändert, festgehalten
+  in `canvas-layout-bindings.spec.ts` (vor dem Umbau geschrieben, 29 Fälle).
+- **Toter Code:** Die Auswahlliste für Ja/Nein-Felder (`mat-select`,
+  `onBooleanChange`) wurde nie gezeigt – Ja/Nein-Felder sind immer
+  Optionsfelder – und ist entfernt, samt dem nur dort benutzten Text
+  `FIELD.BOOLEAN.EMPTY`.
+- **Durchtabben ist keine Eingabe (L-01):** Ein Feld meldet beim Verlassen nur
+  noch eine Änderung (auch leere Datums-/Zeitfelder nicht mehr), und der
+  Canvas nimmt denselben Wert nicht als Eingabe. Vorher hielt Durchtabben
+  während eines Laufs jedes Feld gegen den KI-Wert fest, und bei einer
+  Neu-Extraktion wurde ein KI-Wert zum Nutzerwert.
+- **Mehrere Elemente einer Instanz (`instance-id`):** Laufnummer und die
+  Eingaben während eines Laufs gehören zum gemeinsamen Zustand. Eine Eingabe,
+  ein Zurücksetzen oder ein JSON-Import im einen Element gilt auch für einen
+  Lauf, den das andere gestartet hat. Laufnummern sind über alle Instanzen
+  eindeutig, ein Lauf von vor einem Wechsel der Instanz schreibt nicht in die
+  neue.
+- **Typwechsel durch die Antwort:** Eingaben während eines Laufs in Felder, die
+  der neue Inhaltstyp nicht hat, landen nicht mehr in den Metadaten (sonst
+  unter dem neuen Typ exportiert/hochgeladen).
+- **Typwahl während einer URL- oder Node-ID-Extraktion** extrahiert dieselbe
+  URL bzw. denselben Node für den gewählten Typ neu. Vorher geschah nichts
+  oder es lief der Text der vorigen Seite.
+- **Start mit `context-name`:** Der Sprach-Stream löst beim Start keine
+  Neubeschriftung und keine zweite Kern-Schema-Anfrage mehr aus. Ein
+  Kern-Schema, das angefordert wird, während der Kontext gesetzt wird, wartet
+  auf diesen, statt auf `default` zurückzufallen und den konfigurierten
+  Kontext (z. B. `mds_oeh`) zu überschreiben; gleichzeitige Anfragen gehen
+  einmal raus.
+- **Aufräumen (M-02):** Text-, URL-, Node-ID-Extraktion und Typwechsel laufen
+  über eine gemeinsame `runExtraction` (vorher vier fast gleiche Abläufe).
+- 248 Specs.
+
+Korrekturen aus dem Release-Review vom 18.10. (2.1.1 → 3.0.0):
+
+- **Werte je Inhaltsart gehören zur Seite (M4):** Die beim Typwechsel gemerkten
+  Werte wurden nie verworfen. Eine Typwahl brachte die Spezialfelder einer
+  früheren Seite zurück (exportiert und hochgeladen mit der neuen) und brach
+  eine laufende Extraktion ab, ohne sie für den Typ neu zu starten. Jetzt
+  verwerfen Zurücksetzen, Laden/Import und jede neue Extraktion diese Werte;
+  eine Typwahl während eines Laufs startet ihn immer für den gewählten Typ neu.
+- **Getippte Uhrzeit (#22):** Das Zeitfeld nimmt auch `9.30` an; eine ungültige
+  Eingabe (`930?`, `abc`) zeigt den Fehler und bleibt stehen, statt durch
+  „Invalid DateTime“ ersetzt zu werden. Die Uhr öffnet weiter über den Button
+  und gibt den Fokus an das Feld zurück.
+- **Instanzwechsel (#23):** Ein Lauf, der beim Wechsel der `instance-id` noch
+  unterwegs war, beendet den Spinner der alten Instanz; ein anderes Element
+  dort drehte sonst endlos und sendete kein `metadataChange` mehr.
+- **Textfeld nach Typwahl (#24):** Ersetzt eine Typwahl die Textextraktion und
+  gelingt der neue Lauf, wird das Textfeld geleert wie nach jeder erfolgreichen
+  Extraktion; vorher ging der Text beim nächsten Klick als Korrektur raus.
+- **Sprachwechsel während eines Laufs (#25):** Neu beschriftete Feldnamen
+  fallen nicht mehr auf die alte Sprache zurück, wenn die Antwort einen neuen
+  Inhaltstyp mitbringt.
+- **Upload-Fehler:** Abgelehnte Anfragen (422) zeigen die Ursache statt
+  „[object Object]“, jeder Fehler die Anfrage-ID. Nach einer Zeitüberschreitung
+  (`UPLOAD_TIMEOUT`) sagt das Widget, ob der angelegte Node verworfen wurde oder
+  noch im Repository liegt. „Schema initialization failed“, „Upload failed“
+  und „Unknown error“ sind übersetzt (de/en).
+- **Upload-Button behält den Fokus:** Während des Uploads ist er
+  `aria-disabled` statt `disabled` (der Klick bleibt wirkungslos), so kann die
+  Ergebnismeldung den Fokus zurückgeben (U-05).
+- **Import:** Ein Import ohne `metadataset` behält keine Felder und keinen Typ
+  der vorigen Seite mehr, einer ohne `_source_text` bzw. Vorschaubild nicht
+  deren Text (Upload-`extended_text`, Quelle einer Neu-Extraktion) und Bild.
+  Ein zusammen mit `metadata-input` gesetztes `preview-image` bleibt. Fehler
+  beim Laden von `metadata-input` erscheinen als Meldung statt als
+  unbehandelte Ablehnung.
+- **Kontextwechsel:** Gruppen der Inhaltsarten werden mit den Feldern neu
+  geladen. **Unterfelder:** Eine Eingabe in ein Unterfeld während eines Laufs
+  macht nur dieses zum Nutzerwert, nicht seine Geschwister.
+- **Deploy (`scripts/build-elements.js`, #26–#28):** Fehlende Lizenztexte
+  stoppen vor dem ersten Schreiben. Die Lizenztexte der Schriften liegen neben
+  ihnen (`dist/fonts/OFL.txt` für Roboto, `LICENSE-material-icons.txt`). Das
+  Skript nennt das Ziel und lehnt einen Agenten anderer Hauptversion ab (außer
+  mit `--force`) – der Standard-Pfad zeigte auf den Agenten 2.1.1.
+- **Nachprüfung dieser Korrekturen:**
+  - Uhr und Kalender sind in schreibgeschützten Zeit- und Datum-Zeit-Feldern
+    und während einer Extraktion gesperrt (sie nahmen dort Werte an; in 2.1.1
+    galt das für Zeitfelder schon, für Datum-Zeit-Felder nicht).
+  - Zwei schnelle Typwahlen während einer Extraktion starten den Lauf für die
+    zweite neu, auch bei leerem Formular; vorher ging er still verloren.
+  - Zurück zu einem gemerkten Typ während eines Laufs: dessen gemerkte Werte
+    gehen mit ihrer Herkunft (KI/Nutzer) in die Neu-Extraktion (U-06).
+  - Das `preview-image` des Hosts bleibt nach jedem Import über
+    `metadata-input` ohne eigenes Bild, auch wenn es vorher oder während des
+    Ladens gesetzt wurde.
+  - Der Upload-Button sieht während des Uploads gesperrt aus (er behielt Farbe
+    und Hover).
+  - Ist der Agent nicht erreichbar, fehlen die Texte: Schemafehler, unbekannte
+    Ursache und Ladefehler von `metadata-input` erscheinen dann englisch mit
+    Ursache statt als roher Schlüssel.
+  - `uploadResult.error` (Host-Ereignis) ist bei HTTP-Fehlern ein lesbarer Text
+    in der Widget-Sprache mit Ursache und Anfrage-ID; vorher `detail`
+    unverändert, bei 422 eine Liste. README beschreibt das Feld.
+- **Aufräumen und Doku:** Rund 600 Zeilen Canvas-Styles für Elemente, die das
+  Canvas-Template nicht hat, sind entfernt; der Fokusring des Vorschaubilds
+  nutzt die Widget-Farbe. README: Projektstruktur, Deploy-Schritte und die
+  Grenze von `instance-id` (`api-url` und `context-name` gelten seitenweit).
+- 322 Specs, Coverage-Untergrenze angehoben.
+
+Korrekturen aus dem Audit (`metadata-agent/docs/audits/2026-10-17-audit-3.0.0.md`):
+
+- **Überholte Läufe schreiben nicht mehr ins Formular (L-01):** Nach einem
+  Zurücksetzen, einer Typwahl oder einem JSON-Import während einer Extraktion
+  kehrten Werte der vorigen Seite zurück – die Prüfung galt nur der Antwort von
+  `/generate`, nicht den Schritten danach. Jetzt wird nach jedem Warten
+  geprüft; Laden und Import verwerfen einen laufenden Lauf, eine Typwahl
+  ersetzt ihn durch einen Lauf für den gewählten Typ. Ein überholter Lauf
+  schickt keine Anfrage mehr ab.
+- **Typwechsel behält die Kern-Eingaben (U-06):** Die neu angestoßene
+  Generierung bekommt die Kernfelder mit ihrer Herkunft (KI/Nutzer) als
+  `existing_metadata`; die Felder des alten Typs nicht. Der Agent überschreibt
+  Werte mit Herkunft „Nutzer“ nicht.
+- **Tastatur und Screenreader (U-01):** Vokabularfelder öffnen ihre Auswahl mit
+  Enter, Leertaste oder Pfeil nach unten (combobox mit Dialog); die Auswahl ist
+  ein modaler Dialog mit Fokusfalle, Escape schließt sie und gibt den Fokus an
+  das Feld zurück. Aufklappbare Feldgruppen sind Buttons mit
+  `aria-expanded`. Icon-Buttons und Fortschrittsbalken haben Namen.
+- **Keine Browser-Dialoge mehr (U-05):** Meldungen und Rückfragen (Zurücksetzen,
+  Dublette, Upload-Fehler) erscheinen im Widget statt per `alert()`/`confirm()`,
+  die die Host-Seite blockierten und in Sandbox-iframes unterdrückt werden.
+  Nach dem Schließen kehrt der Fokus zum auslösenden Button zurück; beim
+  Zurücksetzen steht er zuerst auf „Abbrechen“; Escape bricht ab und schließt
+  keinen Dialog der Host-Seite, in dem das Widget sitzt. Meldungen werden über
+  Live-Regionen angesagt, auch wenn dieselbe zweimal kommt.
+- **Keine Styles mehr für die Host-Seite (U-05):** Design-Tokens, Scrollbars
+  und der Fokusring gelten nur noch im Widget; `html`/`body` und die
+  `--mat-app-*`-Tokens der Host-Seite bleiben unberührt.
+- **URL-Prüfung:** Eine Eingabe mit Leerzeichen gilt nicht mehr als URL
+  („https://kein link“ wurde angenommen).
+- **Tests (T-02):** axe-core prüft alle sieben Layouts, Feld, Auswahl und
+  Meldungen (keine Verstöße „serious“/„critical“); neue Specs für die
+  Validierung, die Meldungen und den Canvas; `npm audit` in der CI. 155 Specs.
+- **Gesperrter Speicher (U-03):** Ohne Zugriff auf `localStorage` (Sandbox,
+  Drittanbieter-iframe) startet das Widget trotzdem und wechselt die Sprache,
+  nur ohne sie sich zu merken.
+
+- `canvas.service.ts` (1.225 → 1.012 Zeilen): reine Hilfen ausgelagert –
+  `canvas-fields.ts` (gefüllt, zählbar, Gruppierung), `canvas-feedback.ts`
+  (Fehlertext mit Anfrage-ID, Antwortprüfung, Warnung bei Teilergebnis) und
+  `canvas-metadata.ts` (Metadaten für Neu-Extraktion und Export). Die
+  öffentliche API von `CanvasService` ist unverändert; `loadMetadata` meldet
+  zusätzlich (`Promise<boolean>`), ob es von einer anderen Aktion überholt
+  wurde, ebenso `selectContentType`.
+- Toter Code entfernt: `app.module.ts`, `controls.component.ts`,
+  `layouts/index.ts` (waren von der Kompilierung ausgeschlossen).
+
 ## 2.1.1 — 2026-10-17 — Versionsstand zum Agenten 2.1.1
 
 Gehört zum Agenten 2.1.1. Am Verhalten ändert sich nichts; das Bundle meldet

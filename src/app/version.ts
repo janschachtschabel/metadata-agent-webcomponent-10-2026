@@ -1,2 +1,2 @@
 /** Widget version — update on each release */
-export const WIDGET_VERSION = '2.1.1';
+export const WIDGET_VERSION = '3.0.0';

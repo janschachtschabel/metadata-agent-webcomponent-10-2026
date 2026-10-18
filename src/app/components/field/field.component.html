@@ -3,15 +3,21 @@
 
   <!-- Radio fields rendered outside mat-form-field (no MatFormFieldControl needed) -->
   <ng-container *ngIf="_isRadioField">
-    <div class="radio-field-label">
+    <div class="radio-field-label" [id]="supportId + '-label'">
       <ng-container *ngIf="field.parentFieldId">{{ field.parentFieldLabel }} ({{ field.label }})</ng-container>
       <ng-container *ngIf="!field.parentFieldId">{{ field.label }}</ng-container>
-      <span *ngIf="field.isRequired" class="required-marker">*</span>
+      <span *ngIf="field.isRequired" class="required-marker" aria-hidden="true">*</span>
+      <span *ngIf="showAiOrigin" class="ai-origin"><mat-icon class="ai-origin-icon" aria-hidden="true">auto_awesome</mat-icon><span class="sr-only">{{ 'FIELD.AI_SUGGESTION' | translate }}</span></span>
     </div>
+    <!-- Required, invalid and the support text are announced, not only shown (U-12). -->
     <mat-radio-group
       [value]="field.value"
       (change)="onRadioChange($event.value)"
       [disabled]="field.status === FieldStatus.EXTRACTING || readonly"
+      [attr.aria-labelledby]="supportId + '-label'"
+      [attr.aria-required]="field.isRequired ? 'true' : null"
+      [attr.aria-invalid]="validationError ? 'true' : null"
+      [attr.aria-describedby]="describedBy || null"
       class="radio-group">
       <mat-radio-button [value]="null">{{ 'FIELD.RADIO.NO_SELECTION' | translate }}</mat-radio-button>
       <mat-radio-button *ngFor="let opt of _radioOptions" [value]="opt.value">
@@ -25,36 +31,30 @@
     appearance="outline"
     floatLabel="always"
     subscriptSizing="dynamic"
+    hideRequiredMarker
     class="md3-text-field"
     [class.is-disabled]="field.status === FieldStatus.EXTRACTING">
     
-    <!-- Label with required marker -->
+    <!-- Label with required marker. The inputs carry [required], so assistive
+         technology hears "required"; Material's own marker is hidden to keep one. -->
     <mat-label>
       <ng-container *ngIf="field.parentFieldId">{{ field.parentFieldLabel }} ({{ field.label }})</ng-container>
       <ng-container *ngIf="!field.parentFieldId">{{ field.label }}</ng-container>
-      <span *ngIf="field.isRequired" class="required-marker">*</span>
+      <span *ngIf="field.isRequired" class="required-marker" aria-hidden="true">*</span>
+      <span *ngIf="showAiOrigin" class="ai-origin"><mat-icon class="ai-origin-icon" aria-hidden="true">auto_awesome</mat-icon><span class="sr-only">{{ 'FIELD.AI_SUGGESTION' | translate }}</span></span>
     </mat-label>
-
-    <!-- Boolean field: mat-select -->
-    <mat-select
-      *ngIf="field.datatype === 'boolean'"
-      [(ngModel)]="inputValue"
-      (selectionChange)="onBooleanChange($event.value)"
-      [placeholder]="field.description || ''"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly">
-      <mat-option [value]="null">{{ 'FIELD.BOOLEAN.EMPTY' | translate }}</mat-option>
-      <mat-option [value]="'true'">{{ 'FIELD.BOOLEAN.TRUE' | translate }}</mat-option>
-      <mat-option [value]="'false'">{{ 'FIELD.BOOLEAN.FALSE' | translate }}</mat-option>
-    </mat-select>
 
     <!-- Date field with calendar picker -->
     <input
       *ngIf="field.datatype === 'date'"
       matInput
+      [required]="field.isRequired"
+      [errorStateMatcher]="errorMatcher"
+      [aria-describedby]="describedBy"
       [matDatepicker]="datePicker"
       [(ngModel)]="dateValue"
       (dateChange)="onDateChange($event)"
-      [placeholder]="field.description || 'TT.MM.JJJJ'"
+      [placeholder]="field.description || placeholderDate"
       [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
     <mat-datepicker-toggle *ngIf="field.datatype === 'date'" matIconSuffix [for]="datePicker"></mat-datepicker-toggle>
     <mat-datepicker #datePicker></mat-datepicker>
@@ -63,39 +63,51 @@
     <input
       *ngIf="field.datatype === 'datetime'"
       matInput
+      [required]="field.isRequired"
+      [errorStateMatcher]="errorMatcher"
+      [aria-describedby]="describedBy"
       type="text"
       [(ngModel)]="inputValue"
       (blur)="onDateTimeBlur()"
-      [placeholder]="field.description || 'TT.MM.JJJJ HH:MM'"
+      [placeholder]="field.description || placeholderDateTime"
       [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+    <!-- Hidden anchors for the pickers; their toggles take the disabled state from them -->
     <!-- Hidden input for date picker binding -->
-    <input *ngIf="field.datatype === 'datetime'" [matDatepicker]="dateTimePicker" (dateChange)="onDateTimePickerSelect($event)" style="display:none"/>
+    <input *ngIf="field.datatype === 'datetime'" [matDatepicker]="dateTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" (dateChange)="onDateTimePickerSelect($event)" style="display:none"/>
     <mat-datepicker-toggle *ngIf="field.datatype === 'datetime'" matIconSuffix [for]="dateTimePicker"></mat-datepicker-toggle>
     <mat-datepicker #dateTimePicker></mat-datepicker>
     <!-- Hidden input for time picker binding -->
-    <input *ngIf="field.datatype === 'datetime'" [ngxMatTimepicker]="dateTimeTimePicker" [format]="24" [value]="dateTimeTimeValue" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
+    <input *ngIf="field.datatype === 'datetime'" [ngxMatTimepicker]="dateTimeTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" [format]="24" [value]="dateTimeTimeValue" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
     <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'datetime'" matIconSuffix [for]="dateTimeTimePicker">
     </ngx-mat-timepicker-toggle>
     <ngx-mat-timepicker #dateTimeTimePicker [format]="24" (timeChanged)="onDateTimeTimeChange($event)"></ngx-mat-timepicker>
 
-    <!-- Time field with clock-dial timepicker -->
+    <!-- Time field: typed (HH:MM) or picked on the clock dial from the toggle (U-14).
+         The picker directive sits on a hidden input: on the typed one it parsed
+         the text first and replaced it ("Invalid DateTime", 9.30 refused). -->
     <input
       *ngIf="field.datatype === 'time'"
+      #typedTime
       matInput
-      [ngxMatTimepicker]="timePicker"
+      [required]="field.isRequired"
+      [errorStateMatcher]="errorMatcher"
+      [aria-describedby]="describedBy"
       [(ngModel)]="inputValue"
-      [format]="24"
+      (change)="onTimeTyped($any($event.target).value)"
       [placeholder]="field.description || 'HH:MM'"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"
-      readonly/>
+      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+    <input *ngIf="field.datatype === 'time'" [ngxMatTimepicker]="timePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" [format]="24" [value]="field.value" tabindex="-1" aria-hidden="true" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
     <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'time'" matIconSuffix [for]="timePicker">
     </ngx-mat-timepicker-toggle>
-    <ngx-mat-timepicker #timePicker [format]="24" (timeChanged)="onTimeStringChange($event)"></ngx-mat-timepicker>
+    <ngx-mat-timepicker #timePicker [format]="24" (timeChanged)="onTimeStringChange($event)" (closed)="typedTime?.nativeElement?.focus()"></ngx-mat-timepicker>
 
     <!-- Number field -->
     <input
       *ngIf="field.datatype === 'number' || field.datatype === 'integer'"
       matInput
+      [required]="field.isRequired"
+      [errorStateMatcher]="errorMatcher"
+      [aria-describedby]="describedBy"
       type="number"
       [(ngModel)]="inputValue"
       (input)="onInput($event)"
@@ -107,6 +119,9 @@
     <input
       *ngIf="field.datatype === 'url' || field.datatype === 'uri'"
       matInput
+      [required]="field.isRequired"
+      [errorStateMatcher]="errorMatcher"
+      [aria-describedby]="describedBy"
       type="url"
       [(ngModel)]="inputValue"
       (input)="onInput($event)"
@@ -118,17 +133,23 @@
     <input
       *ngIf="field.datatype === 'duration'"
       matInput
+      [required]="field.isRequired"
+      [errorStateMatcher]="errorMatcher"
+      [aria-describedby]="describedBy"
       type="text"
       [(ngModel)]="inputValue"
       (input)="onInput($event)"
       (blur)="onBlur()"
-      [placeholder]="field.description || 'z.B. PT2H, P1D, 2 Stunden'"
+      [placeholder]="field.description || placeholderDuration"
       [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
 
     <!-- JSON field -->
     <textarea
       *ngIf="field.datatype === 'json'"
       matInput
+      [required]="field.isRequired"
+      [errorStateMatcher]="errorMatcher"
+      [aria-describedby]="describedBy"
       rows="3"
       cdkTextareaAutosize
       cdkAutosizeMinRows="2"
@@ -145,6 +166,9 @@
     <textarea
       *ngIf="field.datatype === 'object'"
       matInput
+      [required]="field.isRequired"
+      [errorStateMatcher]="errorMatcher"
+      [aria-describedby]="describedBy"
       rows="2"
       cdkTextareaAutosize
       cdkAutosizeMinRows="2"
@@ -160,14 +184,15 @@
     <!-- === Tree Picker fields (vocab with >=5 concepts or hierarchical) === -->
     <div class="inline-chips-input picker-trigger"
          *ngIf="!_isSpecialDatatype && _useTreePicker"
-         (mousedown)="!readonly && !pickerOpen && openPicker(); $event.preventDefault()">
+         (mousedown)="!readonly && !pickerOpen && openPicker(); $event.preventDefault()"
+         (keydown)="onPickerKeydown($event)">
       <mat-chip-set
         *ngIf="(field.multiple || field.datatype === 'array') && field.value?.length"
         class="chip-container"
-        aria-label="Selected values">
+        [attr.aria-label]="'FIELD.SELECTED_VALUES' | translate">
         <mat-chip *ngFor="let chip of field.value" highlighted (removed)="!readonly && removeChip(chip)">
           {{ getChipDisplayValue(chip) }}
-          <button *ngIf="!readonly" matChipRemove type="button" (mousedown)="$event.stopPropagation()">
+          <button *ngIf="!readonly" matChipRemove type="button" [attr.aria-label]="'FIELD.REMOVE_VALUE' | translate: { value: getChipDisplayValue(chip) }" (mousedown)="$event.stopPropagation()">
             <mat-icon fontSet="material-icons-outlined">cancel</mat-icon>
           </button>
         </mat-chip>
@@ -175,18 +200,32 @@
       <!-- Single-value display for non-array fields -->
       <input
         matInput
+        [required]="field.isRequired"
+        [errorStateMatcher]="errorMatcher"
+        [aria-describedby]="describedBy"
         [value]="field.value ? getChipDisplayValue(field.value) : ''"
         [placeholder]="field.description || ''"
         readonly
         class="picker-display-input"
+        role="combobox"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="pickerOpen"
+        [attr.aria-controls]="pickerOpen ? pickerId : null"
         *ngIf="!(field.multiple || field.datatype === 'array')">
       <!-- Input for array fields (collapses when chips are present) -->
       <input
         matInput
+        [required]="field.isRequired"
+        [errorStateMatcher]="errorMatcher"
+        [aria-describedby]="describedBy"
         value=""
         [placeholder]="field.value?.length ? '' : (field.description || placeholderVocabPicker)"
         readonly
         class="picker-display-input"
+        role="combobox"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="pickerOpen"
+        [attr.aria-controls]="pickerOpen ? pickerId : null"
         [class.collapsed]="field.value?.length"
         *ngIf="(field.multiple || field.datatype === 'array')">
     </div>
@@ -196,6 +235,7 @@
       *ngIf="_useTreePicker && !_isSpecialDatatype"
       matIconSuffix
       class="dropdown-arrow"
+      aria-hidden="true"
       (mousedown)="!readonly && !pickerOpen && openPicker(); $event.preventDefault()">
       arrow_drop_down
     </mat-icon>
@@ -205,16 +245,19 @@
       <mat-chip-set
         *ngIf="(field.multiple || field.datatype === 'array') && field.value?.length"
         class="chip-container"
-        aria-label="Selected values">
+        [attr.aria-label]="'FIELD.SELECTED_VALUES' | translate">
         <mat-chip *ngFor="let chip of field.value" highlighted (removed)="!readonly && removeChip(chip)">
           {{ getChipDisplayValue(chip) }}
-          <button *ngIf="!readonly" matChipRemove type="button">
+          <button *ngIf="!readonly" matChipRemove type="button" [attr.aria-label]="'FIELD.REMOVE_VALUE' | translate: { value: getChipDisplayValue(chip) }">
             <mat-icon fontSet="material-icons-outlined">cancel</mat-icon>
           </button>
         </mat-chip>
       </mat-chip-set>
       <textarea
         matInput
+        [required]="field.isRequired"
+        [errorStateMatcher]="errorMatcher"
+        [aria-describedby]="describedBy"
         rows="1"
         cdkTextareaAutosize
         cdkAutosizeMinRows="1"
@@ -260,6 +303,8 @@
       [multiple]="field.multiple || field.datatype === 'array'"
       [selectedValues]="_selectedValues"
       [open]="pickerOpen"
+      [label]="field.label"
+      [panelId]="pickerId"
       (selectionChange)="onTreeSelectionChange($event)"
       (closed)="closePicker()">
     </app-vocab-tree-picker>
@@ -269,16 +314,16 @@
        Errors and warnings live here too: <mat-error> only shows when the
        control is in Material's error state, which these ngModel fields never
        enter, and the layouts hide the subscript area altogether. -->
-  <div class="support-text error" role="alert" *ngIf="validationError">
+  <div class="support-text error" role="alert" [id]="supportId" *ngIf="validationError">
     {{ validationError }}
   </div>
-  <div class="support-text warning" aria-live="polite" *ngIf="validationWarning && !validationError">
+  <div class="support-text warning" aria-live="polite" [id]="supportId" *ngIf="validationWarning && !validationError">
     {{ validationWarning }}
   </div>
-  <div class="support-text required" *ngIf="field.isRequired && field.status === FieldStatus.EMPTY && !validationError && !validationWarning">
+  <div class="support-text required" [id]="supportId" *ngIf="field.isRequired && field.status === FieldStatus.EMPTY && !validationError && !validationWarning">
     {{ 'FIELD.REQUIRED_HINT' | translate }}
   </div>
-  <div class="support-text vocab" *ngIf="field.vocabulary?.type === 'closed' && !field.isRequired && field.status === FieldStatus.EMPTY && !validationError && !validationWarning">
+  <div class="support-text vocab" [id]="supportId" *ngIf="field.vocabulary?.type === 'closed' && !field.isRequired && field.status === FieldStatus.EMPTY && !validationError && !validationWarning">
     {{ 'FIELD.VOCABULARY_CONTROLLED' | translate }}
   </div>
 </div>

@@ -1,41 +1,8 @@
 {
   "COMMON": {
-    "LOADING": "Loading...",
-    "SAVE": "Save",
     "CANCEL": "Cancel",
     "CLOSE": "Close",
-    "BACK": "Back",
-    "NEXT": "Next",
-    "CONFIRM": "Confirm",
-    "DELETE": "Delete",
-    "EDIT": "Edit",
-    "SEARCH": "Search",
-    "FILTER": "Filter",
-    "RESET": "Reset",
-    "DOWNLOAD": "Download",
-    "UPLOAD": "Upload"
-  },
-  "HEADER": {
-    "TITLE": "Metadata Agent",
-    "CLOSE": "Close",
-    "MODE": {
-      "BROWSER_EXTENSION": "Browser Extension",
-      "BOOKMARKLET": "Bookmarklet",
-      "STANDALONE": "Standalone"
-    },
-    "USER": {
-      "GUEST": "Guest",
-      "LOGGED_IN": "Logged In"
-    }
-  },
-  "SIDEBAR": {
-    "TITLE": "Sections",
-    "DESCRIPTION": "Description",
-    "TYPING": "Typology",
-    "PEDAGOGICAL": "Pedagogical",
-    "LICENSE": "License & Source",
-    "CURATION": "Curation",
-    "SECTION": "Section {{index}}"
+    "CONFIRM": "Confirm"
   },
   "INPUT": {
     "PLACEHOLDER": "Describe the resource you want to catalog...",
@@ -49,49 +16,26 @@
     "MODE_TEXT": "Text",
     "MODE_URL": "URL",
     "MODE_NODE_ID": "Node ID",
-    "MODE_PAGE": "Webpage",
-    "EXTRACT_FROM_PAGE": "Reload page"
+    "MODE_PAGE": "Webpage"
   },
   "CONTENT_TYPE": {
-    "LABEL": "Content Type",
-    "CHANGE": "CHANGE",
     "SELECT": "Select Content Type",
-    "NOT_DETECTED": "Please select",
-    "CONFIDENCE": "Confidence"
+    "NOT_DETECTED": "Please select"
   },
   "PROGRESS": {
     "FIELDS": "Fields",
     "REQUIRED": "Required",
-    "OPTIONAL": "Optional",
-    "PERCENTAGE": "Percent",
     "FIELDS_FILLED": "fields filled",
     "FIELDS_RECOGNIZED": "fields recognized"
   },
   "FIELD": {
-    "REQUIRED": "Required",
-    "OPTIONAL": "Optional",
-    "FILLED": "Filled",
-    "EMPTY": "Empty",
-    "EXTRACTING": "Extracting",
-    "ERROR": "Error",
-    "ADD_CHIP": "Add",
-    "REMOVE_CHIP": "Remove",
-    "SHOW_ON_MAP": "Show on OpenStreetMap",
-    "FIELD_INFO": "Field info",
-    "MULTIPLE_HINT": "Multiple values allowed. Choose from dropdown or enter values.",
     "REQUIRED_HINT": "Required field – must be filled",
     "VOCABULARY_CONTROLLED": "Use only terms from the controlled vocabulary.",
-    "VOCABULARY_OPEN": "Preferably use terms from the vocabulary.",
     "ARRAY_PLACEHOLDER": "Enter comma-separated values",
-    "ARRAY_HINT": "Separate multiple values with comma",
     "STATUS": {
-      "EMPTY": "Not yet filled",
-      "EXTRACTING": "Extracting...",
-      "FILLED": "Filled",
-      "ERROR": "Extraction error"
+      "EXTRACTING": "Extracting..."
     },
     "BOOLEAN": {
-      "EMPTY": "Please select",
       "TRUE": "Yes",
       "FALSE": "No"
     },
@@ -100,36 +44,20 @@
     },
     "VOCAB_FILTER": "Filter...",
     "VOCAB_NO_RESULTS": "No results",
+    "VOCAB_EXPAND": "Show narrower terms",
+    "VOCAB_COLLAPSE": "Hide narrower terms",
+    "VOCAB_CLEAR_FILTER": "Clear filter",
+    "SELECTED_VALUES": "Selected values",
+    "REMOVE_VALUE": "Remove {{value}}",
     "VOCAB_OPEN_PICKER": "Browse vocabulary",
-    "MONTHDAY_PLACEHOLDER": "Add day (1-31)",
-    "DURATION_HINT": "Format: P1D (1 day), PT2H (2 hrs), PT30M (30 min)",
-    "URL_HINT": "Full URL including https://"
-  },
-  "WEEKDAYS": {
-    "MONDAY": "Monday",
-    "TUESDAY": "Tuesday",
-    "WEDNESDAY": "Wednesday",
-    "THURSDAY": "Thursday",
-    "FRIDAY": "Friday",
-    "SATURDAY": "Saturday",
-    "SUNDAY": "Sunday"
-  },
-  "MONTHS": {
-    "JANUARY": "January",
-    "FEBRUARY": "February",
-    "MARCH": "March",
-    "APRIL": "April",
-    "MAY": "May",
-    "JUNE": "June",
-    "JULY": "July",
-    "AUGUST": "August",
-    "SEPTEMBER": "September",
-    "OCTOBER": "October",
-    "NOVEMBER": "November",
-    "DECEMBER": "December"
+    "AI_SUGGESTION": "AI suggestion",
+    "DATE_PLACEHOLDER": "DD/MM/YYYY",
+    "DATETIME_PLACEHOLDER": "DD/MM/YYYY HH:MM",
+    "DURATION_PLACEHOLDER": "e.g. PT2H, P1D, 2 hours"
   },
   "PREVIEW": {
-    "TITLE": "Preview Image"
+    "TITLE": "Preview Image",
+    "ALT": "Preview image of the resource"
   },
   "SCREENSHOT": {
     "TOGGLE": "Preview"
@@ -137,38 +65,20 @@
   "EMPTY_STATE": {
     "TITLE": "Ready for Extraction",
     "MESSAGE": "Enter a description and click \"Start Extraction\"",
-    "SELECT_CONTENT_TYPE": "Select a content type or start the extraction",
     "NO_DATA": "No metadata available"
   },
   "CONTROLS": {
     "SAVE": "Save",
     "RESET": "Reset",
-    "DOWNLOAD": "Download",
     "LOAD_JSON": "Open JSON",
     "SAVE_JSON": "Save JSON",
     "UPLOAD": "Upload to Repository",
     "SUBMIT": "Send to Plugin"
   },
-  "TOOLTIPS": {
-    "SUBMIT_SUGGESTION": "Submit Suggestion",
-    "DOWNLOAD_JSON": "Download JSON"
-  },
-  "FOOTER": {
-    "FIELDS_INFO": "of {{total}} fields filled",
-    "PROVIDER_INFO": "LLM Provider",
-    "SUBMIT_GUEST": "📮 Submit Suggestion",
-    "SUBMIT_LOGGED_IN": "📤 Publish",
-    "SUBMITTING": "⏳ Submitting...",
-    "REQUIRED_FIELDS_MISSING": "⚠️ Required Fields ({{filled}}/{{total}})",
-    "DOWNLOAD_JSON": "💾 Download JSON",
-    "SEND_TO_PLUGIN": "💾 Send to Plugin",
-    "SENDING": "⏳ Sending..."
-  },
   "VALIDATION": {
     "REQUIRED_FIELD": "This field is required",
     "INVALID_FORMAT": "Invalid format",
     "INVALID_URL": "Invalid URL",
-    "INVALID_EMAIL": "Invalid email address",
     "INVALID_NUMBER": "Invalid number",
     "INVALID_BOOLEAN": "Invalid boolean value (yes/no)",
     "INVALID_DATE": "Invalid date (Format: YYYY-MM-DD)",
@@ -187,59 +97,52 @@
   },
   "ALERTS": {
     "INPUT_REQUIRED": "Please enter a text.",
-    "FILL_REQUIRED_FIELDS": "Please fill in all required fields.",
     "JSON_LOAD_ERROR": "Error loading JSON file. Please check the format.",
-    "REQUIRED_FIELDS_STATUS": "Please fill in all required fields. ({{filled}}/{{total}} completed)",
-    "METADATA_SENT": "✅ Publishing metadata...",
-    "SUGGESTION_SUBMITTED": "✅ Submitting suggestion...",
-    "RESET_CONFIRM": "Do you really want to reset all data?",
     "CONFIRM_RESET": "Do you really want to reset all data?",
-    "SUBMIT_AGAIN": "Would you like to submit another suggestion?",
-    "VIEW_IN_REPO": "Would you like to view the existing entry in the repository?",
-    "SUCCESS": {
-      "TITLE": "✅ Successfully Submitted!",
-      "MESSAGE": "Your suggestion has been successfully submitted!",
-      "NODE_ID": "📋 Node ID:",
-      "STATUS": "🔍 Status: Under Review",
-      "REPOSITORY": "📊 Repository: WLO Staging",
-      "THANK_YOU": "Your contribution is now being reviewed by our team. Thank you! 🎉",
-      "VIEW_IN_REPO_BTN": "🔍 View in Repository"
-    },
-    "ERROR": {
-      "SUBMISSION_ERROR": "❌ Submission Error:",
-      "TECHNICAL_ERROR": "❌ Submission Error\n\nA technical error has occurred.\nPlease try again later.",
-      "TRY_AGAIN": "Please try again later or contact support.",
-      "DETAILS": "Details:"
-    },
-    "DUPLICATE": {
-      "TITLE": "⚠️ This URL already exists in the repository!",
-      "NODE_ID": "📋 Node ID:"
-    },
     "UPLOAD_SUCCESS": "Upload successful! Node ID: {{nodeId}}",
     "UPLOAD_DUPLICATE": "This URL already exists: \"{{title}}\"\n\nUpload anyway?",
     "UPLOAD_ERROR": "Upload failed: {{error}}",
-    "PLUGIN": {
-      "SENT": "Successfully transferred!",
-      "MESSAGE": "The metadata has been passed to the browser plugin and will now be published to the repository."
-    }
+    "UPLOAD_TIMEOUT": "Writing to the repository took too long and was cancelled.",
+    "UPLOAD_TIMEOUT_DISCARDED": "The node created in the process was removed again.",
+    "UPLOAD_TIMEOUT_NODE_KEPT": "Node {{nodeId}} still exists in the repository – please check it before uploading again.",
+    "UNKNOWN_ERROR": "Unknown error",
+    "SCHEMA_INIT_FAILED": "The fields could not be loaded: {{error}}",
+    "METADATA_LOAD_ERROR": "The metadata handed in could not be loaded: {{error}}"
   },
   "LANGUAGE": {
     "SWITCH_TO_ENGLISH": "Switch to English",
-    "SWITCH_TO_GERMAN": "Zu Deutsch wechseln",
-    "CURRENT": "Language"
+    "SWITCH_TO_GERMAN": "Zu Deutsch wechseln"
   },
   "LAYOUT": {
     "DEFAULT": {
       "NAME": "Default",
       "DESCRIPTION": "Edit mode for local, hosted, bookmarklet and browser extension use"
     },
-    "VIEWER": {
-      "NAME": "Viewer",
-      "DESCRIPTION": "Embed mode for Web Component (Read-only)"
-    },
     "CLEAN": {
       "NAME": "Clean",
       "DESCRIPTION": "Minimal, borderless view for embedding and review"
+    },
+    "ALL_FIELDS": "All fields",
+    "CORE_FIELDS": "Core",
+    "DETAIL": {
+      "NAME": "Detail",
+      "DESCRIPTION": "Multi-column read-only view"
+    },
+    "DIALOG": {
+      "NAME": "Dialog",
+      "DESCRIPTION": "Compact review dialog"
+    },
+    "PLUGIN": {
+      "NAME": "Plugin",
+      "DESCRIPTION": "Compact sidebar for the browser extension"
+    },
+    "PRUEFTISCH": {
+      "NAME": "Review table",
+      "DESCRIPTION": "Card-based review view for edu-sharing"
+    },
+    "PRUEFTISCH_ORG": {
+      "NAME": "Review table (organisation)",
+      "DESCRIPTION": "Review view for organisations"
     }
   },
   "EXTRACTION_RESULT": {

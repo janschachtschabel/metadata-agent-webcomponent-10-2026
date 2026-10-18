@@ -1,15 +1,13 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { 
-  LayoutConfig, 
-  LayoutPreset, 
+import {
+  LayoutConfig,
   MODE_LAYOUT_MAP,
   LAYOUT_PRESETS,
   DEFAULT_LAYOUT,
   CanvasElements
 } from '../shared/layouts';
 import { I18nService } from './i18n.service';
-import { IntegrationModeService, IntegrationMode } from './integration-mode.service';
 
 /**
  * Layout Service
@@ -19,13 +17,12 @@ import { IntegrationModeService, IntegrationMode } from './integration-mode.serv
  * LAYOUT SYSTEM:
  * - Multiple layouts: default, metadatenpruefdialog, prueftisch, prueftisch-gross
  * - Each element can be individually toggled via component inputs
- * - IntegrationMode automatically selects appropriate layout
- * 
- * INTEGRATION MODE → LAYOUT MAPPING:
- * - standalone → default
- * - browser-extension → default
- * - bookmarklet → default
  * - readonly mode can be combined with any layout
+ *
+ * The integration-mode detection that used to sit behind this service ran at
+ * every start, guessed a mode nobody read, and carried postMessage helpers
+ * with target '*' that nothing called (audit M-03); it is gone. Mode names
+ * such as 'bookmarklet' still resolve through MODE_LAYOUT_MAP in getLayout().
  */
 @Injectable({ providedIn: 'root' })
 export class LayoutService {
@@ -33,8 +30,7 @@ export class LayoutService {
   private activeLayout$ = new BehaviorSubject<LayoutConfig>(DEFAULT_LAYOUT);
   
   constructor(
-    private i18n: I18nService,
-    private integrationMode: IntegrationModeService
+    private i18n: I18nService
   ) {
     this.registerDefaultLayouts();
   }
@@ -151,21 +147,6 @@ export class LayoutService {
     }
     
     return classes;
-  }
-  
-  /**
-   * Get layout based on current integration mode
-   */
-  getLayoutForIntegrationMode(): LayoutConfig {
-    const mode = this.integrationMode.getMode();
-    return this.getLayout(mode);
-  }
-  
-  /**
-   * Get recommended layout preset for integration mode
-   */
-  getRecommendedLayoutName(): LayoutPreset {
-    return this.integrationMode.getRecommendedLayout();
   }
   
   /**

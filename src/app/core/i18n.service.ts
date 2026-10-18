@@ -8,6 +8,27 @@ const SUPPORTED_LANGUAGES = ['de', 'en'];
 const DEFAULT_LANGUAGE = 'de';
 
 /**
+ * localStorage throws (SecurityError) where storage is blocked - sandboxed or
+ * third-party iframes, strict privacy settings. The language is then simply
+ * not remembered; the widget must still start.
+ */
+function readStoredLanguage(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeLanguage(lang: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, lang);
+  } catch {
+    // not remembered across visits - nothing else depends on it
+  }
+}
+
+/**
  * i18n Service - Language Management
  * Wraps ngx-translate with persistence and helper methods
  */
@@ -35,7 +56,7 @@ export class I18nService {
     this.translate.setDefaultLang(DEFAULT_LANGUAGE);
 
     // Try to restore from localStorage
-    const savedLang = localStorage.getItem(STORAGE_KEY);
+    const savedLang = readStoredLanguage();
     if (savedLang && SUPPORTED_LANGUAGES.includes(savedLang)) {
       this.setLanguage(savedLang);
       return;
@@ -59,7 +80,7 @@ export class I18nService {
     
     this.translate.use(lang);
     this.currentLanguage$.next(lang);
-    localStorage.setItem(STORAGE_KEY, lang);
+    storeLanguage(lang);
   }
 
   /**

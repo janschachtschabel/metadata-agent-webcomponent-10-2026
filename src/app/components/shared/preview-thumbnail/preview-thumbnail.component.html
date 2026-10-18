@@ -1,10 +1,12 @@
 <div class="preview-thumbnail" *ngIf="imageUrl" [class.compact]="compact" [class.expanded]="isExpanded">
-  <div class="preview-header" (click)="toggleExpand()">
-    <mat-icon>image</mat-icon>
+  <!-- A button, so the preview opens from the keyboard too (U-13) -->
+  <button type="button" class="preview-header" (click)="toggleExpand()" [attr.aria-expanded]="isExpanded">
+    <mat-icon aria-hidden="true">image</mat-icon>
     <span class="preview-label">{{ 'PREVIEW.TITLE' | translate }}</span>
-    <mat-icon class="expand-icon">{{ isExpanded ? 'expand_less' : 'expand_more' }}</mat-icon>
-  </div>
+    <mat-icon class="expand-icon" aria-hidden="true">{{ isExpanded ? 'expand_less' : 'expand_more' }}</mat-icon>
+  </button>
   <div class="preview-image-wrapper" *ngIf="isExpanded || !compact">
-    <img [src]="imageUrl" alt="Preview" class="preview-image" loading="lazy" />
+    <!-- The image can come from any host: it gets no referrer with the editor's page address (U-15) -->
+    <img [src]="imageUrl" [alt]="'PREVIEW.ALT' | translate" referrerpolicy="no-referrer" class="preview-image" loading="lazy" />
   </div>
 </div>

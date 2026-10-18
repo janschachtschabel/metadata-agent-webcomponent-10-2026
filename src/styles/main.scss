@@ -126,24 +126,18 @@ $theme: mat.define-theme((
   @include mat.all-component-themes($theme);
 }
 
-// Override primary color with corporate blue #003B7C
-html {
+// Everything below is set on the widget roots as well: this stylesheet lands
+// in the host page, whose margins, scrollbars, focus rings and --mat-*/--md-*
+// tokens are its own (src/styles/global-styles.spec.ts). The standalone page
+// sets its html/body rules itself (src/index.html).
+#{$widget-roots} {
+  // Corporate blue #003B7C as primary colour
   --mat-app-primary: #003B7C;
   --mat-app-on-primary: #ffffff;
   --mat-app-primary-container: #d0e8ff;
   --mat-app-on-primary-container: #001d36;
-}
 
-// Global styles — these reach a host page too. The font is set on the widget
-// roots above instead, so a host page's text keeps its own.
-html, body {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-}
-
-// Material Design v3 inspired tokens
-:root {
+  // Material Design v3 inspired tokens
   // Primary colors
   --md-primary: #0062ac;
   --md-on-primary: #ffffff;
@@ -190,32 +184,31 @@ html, body {
   --md-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
   --md-elevation-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
   --md-elevation-3: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
-}
 
-// Scrollbar styling
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--md-surface-variant);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--md-outline);
-  border-radius: 4px;
-  
-  &:hover {
-    background: var(--md-on-surface-variant);
+  // Scrollbars of the widget's own scroll areas
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
   }
-}
 
-// Focus visible
-*:focus-visible {
-  outline: 2px solid var(--md-primary);
-  outline-offset: 2px;
+  ::-webkit-scrollbar-track {
+    background: var(--md-surface-variant);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--md-outline);
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--md-on-surface-variant);
+    }
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--md-primary);
+    outline-offset: 2px;
+  }
 }
 
 // ngx-mat-timepicker opens as a dialog with this panel class, in the widget's
@@ -232,15 +225,3 @@ html, body {
   }
 }
 
-// Utility classes
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}

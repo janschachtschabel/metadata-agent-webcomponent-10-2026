@@ -38,7 +38,7 @@
           [ngModel]="userText"
           (ngModelChange)="userTextChange.emit($event)"
           [disabled]="state?.isExtracting ?? false"
-          (keydown.enter)="onEnterKey($event)">
+          (keydown)="onTextKeydown($event)">
         </textarea>
       </mat-form-field>
     </ng-container>
@@ -140,7 +140,7 @@
   <div class="extraction-error" *ngIf="state?.extractionError" role="alert">
     <mat-icon>error_outline</mat-icon>
     <span>{{ state!.extractionError }}</span>
-    <button mat-icon-button (click)="onDismissError()">
+    <button mat-icon-button (click)="onDismissError()" [attr.aria-label]="'COMMON.CLOSE' | translate">
       <mat-icon>close</mat-icon>
     </button>
   </div>
@@ -167,7 +167,8 @@
           mat-icon-button
           [matMenuTriggerFor]="contentTypeMenu"
           [disabled]="state?.isExtracting ?? false"
-          class="split-button-trigger">
+          class="split-button-trigger"
+          [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
           <mat-icon>expand_more</mat-icon>
         </button>
       </div>
@@ -197,9 +198,10 @@
 
     <!-- Progress Bar -->
     <div class="progress-bar-wrapper">
-      <mat-progress-bar 
+      <mat-progress-bar
         mode="determinate"
-        [value]="_progressPercent">
+        [value]="_progressPercent"
+        [attr.aria-label]="'PROGRESS.FIELDS_FILLED' | translate">
       </mat-progress-bar>
       <mat-icon class="progress-icon" [class.complete]="_progressPercent === 100">
         {{ _progressPercent === 100 ? 'check_circle' : 'hourglass_empty' }}
@@ -215,18 +217,23 @@
 
   <!-- ===== FIELD GROUPS ===== -->
   <section class="fields-section" *ngIf="_displayGroups.length">
-    <ng-container *ngFor="let group of _displayGroups; trackBy: trackByGroupId">
-      <div class="field-group" 
+    <ng-container *ngFor="let group of _displayGroups; trackBy: trackByGroupId; let i = index">
+      <div class="field-group"  
            *ngIf="(flatGroups || (group.isCore && showCoreFields) || (!group.isCore && showSpecialFields)) && (!readonly || (_visibleFieldsMap.get(group.id)?.length ?? 0) > 0)">
         
         <!-- Group Header -->
         <div class="group-header" (click)="group.collapsed = !group.collapsed">
           <div class="group-title">
             <mat-icon>{{ group.icon || 'folder' }}</mat-icon>
-            <h3>{{ group.label }}</h3>
+            <h3>
+              <button type="button" class="group-toggle"
+                      [attr.aria-expanded]="!group.collapsed"
+                      [attr.aria-controls]="group.collapsed ? null : _uid + '-g' + i"
+                      (click)="$event.stopPropagation(); group.collapsed = !group.collapsed">{{ group.label }}</button>
+            </h3>
           </div>
           <div class="group-info" *ngIf="showFieldActions">
-            <span class="schema-badge">{{ group.schemaName || 'Core' }}</span>
+            <span class="schema-badge">{{ !group.schemaName || group.schemaName === 'Core' ? ('LAYOUT.CORE_FIELDS' | translate) : group.schemaName }}</span>
             <span class="count">{{ _filledCountMap.get(group.id) ?? 0 }}/{{ _flatCountMap.get(group.id) ?? 0 }}</span>
             <span class="count-label">{{ 'PROGRESS.FIELDS_RECOGNIZED' | translate }}</span>
           </div>
@@ -234,7 +241,8 @@
         </div>
         
         <!-- Group Fields (multi-column grid) -->
-        <div class="group-fields" 
+        <div class="group-fields"
+             [id]="_uid + '-g' + i"
              [class.columns-2]="columns === 2"
              [class.columns-3]="columns === 3"
              [class.columns-4]="columns === 4"
@@ -273,7 +281,7 @@
         <button 
           mat-icon-button
           [matMenuTriggerFor]="floatingCtMenu"
-          [disabled]="state?.isExtracting ?? false">
+          [disabled]="state?.isExtracting ?? false" [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
           <mat-icon>expand_more</mat-icon>
         </button>
       </div>
@@ -291,14 +299,14 @@
     
     <!-- Action Buttons (hidden when showContentTypeOnly is true) -->
     <div class="action-buttons" *ngIf="!showContentTypeOnly">
-      <app-json-loader *ngIf="showJsonLoader" (jsonLoaded)="jsonLoaded.emit($event)"></app-json-loader>
+      <app-json-loader *ngIf="showJsonLoader" (jsonLoaded)="jsonLoaded.emit($event)" (loadError)="jsonLoadError.emit()"></app-json-loader>
       
       <button 
         mat-icon-button
         *ngIf="showSaveButton"
         [disabled]="!state?.filledFields"
         (click)="downloadJson.emit()"
-        [matTooltip]="'CONTROLS.SAVE_JSON' | translate">
+        [matTooltip]="'CONTROLS.SAVE_JSON' | translate" [attr.aria-label]="'CONTROLS.SAVE_JSON' | translate">
         <mat-icon>save</mat-icon>
       </button>
       
@@ -306,9 +314,10 @@
         mat-icon-button
         *ngIf="showUploadButton"
         class="upload-btn"
-        [disabled]="!state?.filledFields"
+        [disabled]="!state?.filledFields || uploading"
+        [disabledInteractive]="uploading"
         (click)="upload.emit()"
-        [matTooltip]="'CONTROLS.UPLOAD' | translate">
+        [matTooltip]="'CONTROLS.UPLOAD' | translate" [attr.aria-label]="'CONTROLS.UPLOAD' | translate">
         <mat-icon>cloud_upload</mat-icon>
       </button>
       
@@ -316,7 +325,7 @@
         mat-icon-button
         *ngIf="showResetButton"
         (click)="reset.emit()"
-        [matTooltip]="'CONTROLS.RESET' | translate">
+        [matTooltip]="'CONTROLS.RESET' | translate" [attr.aria-label]="'CONTROLS.RESET' | translate">
         <mat-icon>refresh</mat-icon>
       </button>
     </div>

@@ -11,10 +11,13 @@ import {
   ChangeDetectorRef,
   NgZone,
   HostListener,
-  HostBinding
+  HostBinding,
+  ViewChild,
+  ViewContainerRef,
+  ComponentRef,
+  DoCheck,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, skip, takeUntil } from 'rxjs';
 
 import { WIDGET_VERSION } from '../../version';
 import { CanvasService } from '../../core/canvas.service';
@@ -24,16 +27,12 @@ import { LayoutService } from '../../core/layout.service';
 import { I18nService } from '../../core/i18n.service';
 import { DynamicTranslateLoader } from '../../core/dynamic-translate-loader';
 import { InstanceRegistry } from '../../core/instance-registry';
+import { failureCause, translated, uploadFailure } from '../../core/canvas-feedback';
 import { WidgetDebug } from '../../core/debug';
 import { CanvasState, ContentType } from '../../shared/models/canvas.models';
 import { LayoutConfig, DEFAULT_LAYOUT } from '../../shared/layouts';
-import { DefaultLayoutComponent } from '../layouts/default-layout/default-layout.component';
-import { PluginLayoutComponent } from '../layouts/plugin-layout/plugin-layout.component';
-import { DialogLayoutComponent } from '../layouts/dialog-layout/dialog-layout.component';
-import { DetailLayoutComponent } from '../layouts/detail-layout/detail-layout.component';
-import { CleanLayoutComponent } from '../layouts/clean-layout/clean-layout.component';
-import { PrueftischLayoutComponent } from '../layouts/prueftisch-layout/prueftisch-layout.component';
-import { PrueftischOrgLayoutComponent } from '../layouts/prueftisch-org-layout/prueftisch-org-layout.component';
+import { LAYOUT_COMPONENTS, LayoutInputs, LayoutName, LayoutOutputs, createLayout } from './layout-host';
+import { Notice, WidgetNoticeComponent } from '../shared/widget-notice/widget-notice.component';
 
 /**
  * Canvas Component - Orchestrator
@@ -48,22 +47,13 @@ import { PrueftischOrgLayoutComponent } from '../layouts/prueftisch-org-layout/p
 @Component({
   selector: 'app-canvas',
   standalone: true,
-  imports: [
-    CommonModule,
-    DefaultLayoutComponent,
-    PluginLayoutComponent,
-    DialogLayoutComponent,
-    DetailLayoutComponent,
-    CleanLayoutComponent,
-    PrueftischLayoutComponent,
-    PrueftischOrgLayoutComponent
-  ],
+  imports: [WidgetNoticeComponent],
   templateUrl: './canvas.component.html',
   styleUrls: ['./canvas.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [CanvasService]
 })
-export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
+export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
   /** Readable widget version (accessible via element.version) */
   readonly version = WIDGET_VERSION;
 
@@ -71,7 +61,20 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   private static _nextId = 0;
   private _componentId = `canvas-${CanvasComponent._nextId++}`;
   private _instanceId = 'default';
-  private _isPrimary = true;
+
+  /**
+   * Whether this element emits the DOM events of its instance. Asked each time,
+   * not cached: when the primary element goes away the registry promotes the
+   * next one, and a cached flag kept that element silent for good (U-07).
+   */
+  private get _isPrimary(): boolean {
+    return InstanceRegistry.isPrimary(this._instanceId, this._componentId);
+  }
+
+  /** The widget root says which language it speaks (WCAG 3.1.1/3.1.2, U-16). */
+  @HostBinding('attr.lang') get hostLang(): string {
+    return this.i18n.currentLang;
+  }
 
   @HostBinding('class.borderless') get isBorderless(): boolean {
     return this._borderless === true || (this._borderless === undefined && this._layout.style.borderless);
@@ -96,7 +99,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
       InstanceRegistry.unregister(this._instanceId, this._componentId);
       this._instanceId = value;
       this.canvas.bindToInstance(value);
-      this._isPrimary = InstanceRegistry.register(value, this._componentId);
+      InstanceRegistry.register(value, this._componentId);
       if (WidgetDebug.enabled) console.log(`[${this._componentId}] → bound to instance "${value}", isPrimary=${this._isPrimary}`);
     }
   }
@@ -162,6 +165,9 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   @Input() set layout(value: string) {
     this._layout = this.layoutService.getLayout(value);
     this._layoutName = this._layout.name; // Use canonical name after alias resolution
+    if (this._initialized) {
+      this.renderLayout();
+    }
   }
   
   // Individual element visibility (override layout defaults)
@@ -247,11 +253,14 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   
   @Input() set previewImage(value: string | undefined) {
     if (value !== undefined && value !== null) {
+      this._hostPreviewImage = value;
       // Through the service: a patch of the local `state` copy was replaced by
       // the next state emission, so the image never showed.
       this.canvas.setPreviewImage(value);
     }
   }
+  /** The host's last `preview-image`; a metadata-input import without an image of its own keeps it. */
+  private _hostPreviewImage?: string;
   
   // Screenshot: enable/disable and method configuration
   @Input() set enableScreenshot(value: boolean | string | undefined) {
@@ -343,6 +352,9 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   
   state: CanvasState | null = null;
   userText = '';
+  /** What the widget tells or asks the editor (WidgetNoticeComponent). */
+  notice: Notice | null = null;
+  private pendingAnswer?: (confirmed: boolean) => void;
   sourceUrl = '';
   nodeId = '';
   _inputMode: 'text' | 'url' | 'nodeId' = 'text';
@@ -399,7 +411,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   ) {
     // Bind to default instance and register for event dedup
     this.canvas.bindToInstance(this._instanceId);
-    this._isPrimary = InstanceRegistry.register(this._instanceId, this._componentId);
+    InstanceRegistry.register(this._instanceId, this._componentId);
   }
   
   // ===== PLUGIN EVENT BRIDGE =====
@@ -447,6 +459,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   async ngOnInit(): Promise<void> {
     // All @Input setters have fired by now → safe to render
     this._initialized = true;
+    this.renderLayout();
 
     // Subscribe to state changes (always, even if schema load fails)
     this.canvas.state$.pipe(takeUntil(this.destroy$)).subscribe((state: CanvasState) => {
@@ -456,17 +469,17 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
       // + ngZone.run() would cause full CD cycles that block scrolling.
       // The final emission fires automatically when isExtracting turns false.
       if (this._isPrimary && !state.isExtracting) {
-        clearTimeout(this._metadataChangeTimer);
-        this._metadataChangeTimer = setTimeout(() => {
-          this.ngZone.run(() => this.metadataChange.emit(this.canvas.getMetadataForRepository()));
-        }, 50);
+        this.scheduleMetadataChange();
       }
       this.cdr.markForCheck();
     });
     
-    // Subscribe to language changes
-    this.i18n.language$.pipe(takeUntil(this.destroy$)).subscribe(() => {
+    // Subscribe to language changes: content-type list and the form's labels (U-04).
+    // Changes only: the stream replays the current language at once, which
+    // relabelled an empty form and loaded the core schema before setContext.
+    this.i18n.language$.pipe(skip(1), takeUntil(this.destroy$)).subscribe(() => {
       this.refreshContentTypes();
+      void this.canvas.relocalizeFields();
     });
 
     try {
@@ -484,8 +497,9 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
       }
     } catch (error: any) {
       console.error('Failed to initialize schema:', error);
-      const msg = error?.error?.detail || error?.message || 'API unreachable';
-      this.canvas.setError(`Schema initialization failed: ${msg}`);
+      const cause = failureCause(error, this.i18n);
+      this.canvas.setError(translated(this.i18n, 'ALERTS.SCHEMA_INIT_FAILED', { error: cause },
+        `Schema initialization failed: ${cause}`));
     }
     
     this.cdr.markForCheck();
@@ -493,11 +507,15 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['metadataInput']?.currentValue) {
-      this.loadMetadata(changes['metadataInput'].currentValue);
+      void this.loadMetadata(changes['metadataInput'].currentValue);
     }
   }
   
   ngOnDestroy(): void {
+    // An unanswered question counts as cancelled; its caller must not wait forever.
+    this.settleQuestion(false);
+    // A pending metadataChange would fire on an element that is gone.
+    clearTimeout(this._metadataChangeTimer);
     InstanceRegistry.unregister(this._instanceId, this._componentId);
     this.destroy$.next();
     this.destroy$.complete();
@@ -525,21 +543,28 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   
   startExtraction(): void {
     if (!this.userText.trim()) {
-      alert(this.i18n.instant('ALERTS.INPUT_REQUIRED'));
+      this.say('ALERTS.INPUT_REQUIRED');
       return;
     }
     const text = this.userText;
-    this.userText = ''; // Clear immediately
     // Run outside Angular zone so zone.js doesn't track it as a long task
     this.ngZone.runOutsideAngular(() => setTimeout(async () => {
-      await this.canvas.startExtraction(text);
-      this.ngZone.run(() => this.cdr.markForCheck());
+      const succeeded = await this.canvas.startExtraction(text);
+      this.ngZone.run(() => {
+        // Emptied only now: cleared up front, a failed request lost the text
+        // (U-10). The box is disabled while the run is out, so it still holds
+        // `text` unless a reset emptied it meanwhile.
+        if (succeeded && this.userText === text) {
+          this.userText = '';
+        }
+        this.cdr.markForCheck();
+      });
     }));
   }
   
   startUrlExtraction(url: string): void {
     if (!url.trim()) {
-      alert(this.i18n.instant('ALERTS.INPUT_REQUIRED'));
+      this.say('ALERTS.INPUT_REQUIRED');
       return;
     }
     this.ngZone.runOutsideAngular(() => setTimeout(async () => {
@@ -550,7 +575,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   
   startNodeIdExtraction(nodeId: string): void {
     if (!nodeId.trim()) {
-      alert(this.i18n.instant('ALERTS.INPUT_REQUIRED'));
+      this.say('ALERTS.INPUT_REQUIRED');
       return;
     }
     this.ngZone.runOutsideAngular(() => setTimeout(async () => {
@@ -582,7 +607,23 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
     }
   }
   
+  /** True while an upload runs; the layouts disable their upload button (U-02). */
+  uploading = false;
+
   async uploadToRepository(repository: 'staging' | 'prod' = 'staging'): Promise<void> {
+    // A second click while the request is out would create the node twice.
+    if (this.uploading) return;
+    this.uploading = true;
+    this.cdr.markForCheck();
+    try {
+      await this.runUpload(repository);
+    } finally {
+      this.uploading = false;
+      this.cdr.markForCheck();
+    }
+  }
+
+  private async runUpload(repository: 'staging' | 'prod'): Promise<void> {
     const metadata = this.canvas.getMetadataForRepository();
     const state = this.canvas.getCurrentState();
     const extendedText = state.userText || undefined;
@@ -605,24 +646,20 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
         repositoryUrl: result.node?.repositoryUrl
       });
       
-      if (result.success) {
-        alert(this.i18n.instant('ALERTS.UPLOAD_SUCCESS', { 
-          nodeId: result.node?.nodeId || '',
-          url: result.node?.repositoryUrl || ''
-        }));
-      } else if (result.duplicate) {
-        const again = confirm(this.i18n.instant('ALERTS.UPLOAD_DUPLICATE', {
+      if (result.duplicate && !result.success) {
+        const again = await this.ask('ALERTS.UPLOAD_DUPLICATE', {
           title: result.node?.title || '',
           url: result.node?.repositoryUrl || ''
-        }));
+        });
         if (again) {
+          // The question does not block the form: send what it holds now.
           const retryResult = await this.apiService.upload({
-            metadata,
+            metadata: this.canvas.getMetadataForRepository(),
             repository,
             check_duplicates: false,
             start_workflow: true,
             write_extended_data: true,
-            extended_text: extendedText
+            extended_text: this.canvas.getCurrentState().userText || undefined
           });
           this.uploadResult.emit({
             success: retryResult.success,
@@ -630,21 +667,32 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
             error: retryResult.error,
             repositoryUrl: retryResult.node?.repositoryUrl
           });
+          // The second attempt answered silently before (U-11).
+          this.reportUpload(retryResult);
         }
       } else {
-        alert(this.i18n.instant('ALERTS.UPLOAD_ERROR', { error: result.error || 'Unknown error' }));
+        this.reportUpload(result);
       }
     } catch (error: any) {
-      const msg = error?.error?.detail || error?.message || 'Upload failed';
-      alert(this.i18n.instant('ALERTS.UPLOAD_ERROR', { error: msg }));
+      const msg = uploadFailure(error, this.i18n);
+      this.say('ALERTS.UPLOAD_ERROR', { error: msg }, 'error');
       this.uploadResult.emit({ success: false, error: msg });
     }
-    
-    this.cdr.markForCheck();
+  }
+
+  private reportUpload(result: { success: boolean; error?: string; node?: { nodeId?: string; repositoryUrl?: string } }): void {
+    if (result.success) {
+      this.say('ALERTS.UPLOAD_SUCCESS', {
+        nodeId: result.node?.nodeId || '',
+        url: result.node?.repositoryUrl || ''
+      });
+    } else {
+      this.say('ALERTS.UPLOAD_ERROR', { error: result.error || translated(this.i18n, 'ALERTS.UNKNOWN_ERROR', undefined, 'Unknown error') }, 'error');
+    }
   }
   
-  reset(): void {
-    if (confirm(this.i18n.instant('ALERTS.CONFIRM_RESET'))) {
+  async reset(): Promise<void> {
+    if (await this.ask('ALERTS.CONFIRM_RESET', undefined, true)) {
       this.canvas.reset();
       this.userText = '';
     }
@@ -670,14 +718,69 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
       this.cdr.markForCheck();
     } catch (error) {
       console.error('Error importing JSON:', error);
-      alert(this.i18n.instant('ALERTS.JSON_LOAD_ERROR'));
+      this.say('ALERTS.JSON_LOAD_ERROR', undefined, 'error');
     }
   }
+
+  /** The JSON loader could not read or parse the chosen file (U-11). */
+  onJsonLoadError(): void {
+    this.say('ALERTS.JSON_LOAD_ERROR', undefined, 'error');
+  }
   
+  // ===== NOTICES =====
+
+  /**
+   * Tell the editor something; replaces an open question, which counts as
+   * cancelled. `fallback` is shown while the texts are not loaded.
+   */
+  private say(key: string, params?: Record<string, unknown>, kind: Notice['kind'] = 'info', fallback?: string): void {
+    this.settleQuestion(false);
+    this.notice = { text: fallback ? translated(this.i18n, key, params, fallback) : this.i18n.instant(key, params), kind };
+    this.cdr.markForCheck();
+  }
+
+  /** Ask for confirmation; resolves with the answer (false for cancel/Escape). */
+  private ask(key: string, params?: Record<string, unknown>, destructive = false): Promise<boolean> {
+    this.settleQuestion(false);
+    this.notice = { text: this.i18n.instant(key, params), kind: 'info', question: true, destructive };
+    this.cdr.markForCheck();
+    return new Promise(resolve => (this.pendingAnswer = resolve));
+  }
+
+  onNoticeClosed(confirmed: boolean): void {
+    this.notice = null;
+    this.settleQuestion(confirmed);
+    this.cdr.markForCheck();
+  }
+
+  private settleQuestion(confirmed: boolean): void {
+    const answer = this.pendingAnswer;
+    this.pendingAnswer = undefined;
+    answer?.(confirmed);
+  }
+
   // ===== HELPERS =====
-  
+
+  private scheduleMetadataChange(): void {
+    clearTimeout(this._metadataChangeTimer);
+    this._metadataChangeTimer = setTimeout(() => {
+      this.ngZone.run(() => this.metadataChange.emit(this.canvas.getMetadataForRepository()));
+    }, 50);
+  }
+
+  /** Metadata handed in by the host (`metadata-input`); a failure is shown, not swallowed. */
   private async loadMetadata(metadata: Record<string, unknown>): Promise<void> {
-    await this.canvas.importJsonData(metadata);
+    try {
+      await this.canvas.importJsonData(metadata);
+      // Read after the import: the host may have set the image meanwhile.
+      if (this._hostPreviewImage && !this.canvas.getCurrentState().previewImageUrl) {
+        this.canvas.setPreviewImage(this._hostPreviewImage);
+      }
+    } catch (error) {
+      console.error('Error loading metadata-input:', error);
+      const cause = failureCause(error, this.i18n);
+      this.say('ALERTS.METADATA_LOAD_ERROR', { error: cause }, 'error', `Metadata could not be loaded: ${cause}`);
+    }
   }
   
   private async refreshContentTypes(): Promise<void> {
@@ -690,28 +793,99 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
   /**
    * Determine which layout component to use
    */
-  get activeLayout(): 'default' | 'plugin' | 'dialog' | 'detail' | 'clean' | 'prueftisch' | 'prueftisch-org' {
-    if (this._layoutName === 'plugin') {
-      return 'plugin';
-    }
-    if (this._layoutName === 'dialog') {
-      return 'dialog';
-    }
-    if (this._layoutName === 'detail') {
-      return 'detail';
-    }
-    if (this._layoutName === 'clean') {
-      return 'clean';
-    }
-    if (this._layoutName === 'prueftisch') {
-      return 'prueftisch';
-    }
-    if (this._layoutName === 'prueftisch-org') {
-      return 'prueftisch-org';
-    }
-    return 'default';
+  get activeLayout(): LayoutName {
+    return this._layoutName in LAYOUT_COMPONENTS ? (this._layoutName as LayoutName) : 'default';
   }
-  
+
+  @ViewChild('layoutHost', { read: ViewContainerRef, static: true })
+  private layoutHost!: ViewContainerRef;
+  private renderedLayout: LayoutName | null = null;
+  private layoutRef: ComponentRef<unknown> | null = null;
+
+  /** Create the active layout, or swap it when the layout input changed. */
+  private renderLayout(): void {
+    const name = this.activeLayout;
+    if (name === this.renderedLayout) return;
+    this.layoutRef = createLayout(
+      this.layoutHost, LAYOUT_COMPONENTS[name], this.layoutInputs(), this.layoutOutputs()
+    );
+    this.renderedLayout = name;
+  }
+
+  /**
+   * Bindings in the template were re-read whenever the canvas was checked. A
+   * layout created in code (OnPush) re-reads its bindings only when its own view
+   * is marked; this keeps it in step with the canvas. The layout itself still
+   * only updates when a value actually changed.
+   */
+  ngDoCheck(): void {
+    this.layoutRef?.changeDetectorRef.markForCheck();
+  }
+
+  /**
+   * What the canvas offers the layout - each layout takes the ones it declares
+   * (layout-host.ts). Read on every change detection, like template bindings.
+   */
+  private layoutInputs(): LayoutInputs {
+    return {
+      state: () => this.state,
+      contentTypes: () => this.contentTypes,
+      userText: () => this.userText,
+      sourceUrl: () => this.sourceUrl,
+      nodeId: () => this.nodeId,
+      inputMode: () => this.inputModeValue,
+      backgroundColor: () => this.backgroundColor,
+      columns: () => this.effectiveColumns,
+      flatGroups: () => this._flatGroups,
+      showInputArea: () => this.effectiveShowInputArea,
+      showStatusBar: () => this.effectiveShowStatusBar,
+      showCoreFields: () => this.effectiveShowCoreFields,
+      showSpecialFields: () => this.effectiveShowSpecialFields,
+      showFooter: () => this.effectiveShowFooter,
+      showFloatingControls: () => this.effectiveShowFloatingControls,
+      showFieldActions: () => this.effectiveShowFieldActions,
+      showContentTypeOnly: () => this._showContentTypeOnly,
+      showUploadButton: () => this.effectiveShowUploadButton,
+      showSaveButton: () => this.effectiveShowSaveButton,
+      showJsonLoader: () => this.effectiveShowJsonLoader,
+      showLanguageSwitcher: () => this.effectiveShowLanguageSwitcher,
+      showContentType: () => this.effectiveShowContentType,
+      showResetButton: () => this.effectiveShowResetButton,
+      showPageMode: () => this._showPageMode,
+      uploading: () => this.uploading,
+      readonly: () => this.effectiveReadonly,
+      highlightAi: () => this._highlightAi,
+      showPreview: () => this._showPreview,
+      screenshotEnabled: () => this.state?.screenshotEnabled ?? true,
+    };
+  }
+
+  /** What the canvas does with a layout's events. */
+  private layoutOutputs(): LayoutOutputs {
+    return {
+      userTextChange: (text: string) => { this.userText = text; },
+      sourceUrlChange: (url: string) => { this.sourceUrl = url; },
+      nodeIdChange: (nodeId: string) => { this.nodeId = nodeId; },
+      startExtraction: () => this.startExtraction(),
+      startUrlExtraction: (url: string) => this.startUrlExtraction(url),
+      startNodeIdExtraction: (nodeId: string) => this.startNodeIdExtraction(nodeId),
+      inputModeChange: (mode: 'text' | 'url' | 'nodeId') => { this._inputMode = mode; },
+      reset: () => this.reset(),
+      reloadFromPage: () => this.reloadFromPage.emit(),
+      selectContentType: (type: ContentType) => this.selectContentType(type),
+      fieldValueChange: (change: { fieldId: string; value: unknown }) =>
+        this.canvas.updateFieldValue(change.fieldId, change.value),
+      jsonLoaded: (data: Record<string, unknown>) => this.onJsonLoaded(data),
+      jsonLoadError: () => this.onJsonLoadError(),
+      downloadJson: () => this.downloadJson(),
+      submit: () => this.submit(),
+      upload: () => this.uploadToRepository(),
+      dismissError: () => this.canvas.clearError(),
+      dismissWarning: () => this.canvas.clearWarning(),
+      screenshotToggle: (enabled: boolean) => this.canvas.setScreenshotEnabled(enabled),
+    };
+  }
+
   /**
    * Get effective element visibility (override ?? layout default)
    */

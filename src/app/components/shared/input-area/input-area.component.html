@@ -33,7 +33,7 @@
         [ngModel]="userText"
         (ngModelChange)="userTextChange.emit($event)"
         [disabled]="isExtracting"
-        (keydown.enter)="onEnterKey($event)">
+        (keydown)="onTextKeydown($event)">
       </textarea>
     </mat-form-field>
   </ng-container>

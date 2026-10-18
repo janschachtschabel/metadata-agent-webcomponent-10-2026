@@ -21,6 +21,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { A11yModule } from '@angular/cdk/a11y';
 
 import { VocabularyConcept } from '../../../shared/models/canvas.models';
 
@@ -31,6 +32,41 @@ export interface TreeNode {
   visible: boolean;
   matchesFilter: boolean;
   depth: number;
+}
+
+/**
+ * Where the panel goes: below the field (above when there is no room), as wide
+ * as the field within 360-500 px, but never wider than the viewport minus its
+ * 8 px margins - at 320 px the 360 px minimum ran off the screen (U-14).
+ */
+export function pickerPanelPosition(
+  rect: { top: number; bottom: number; left: number; width: number },
+  viewportWidth: number,
+  viewportHeight: number
+): Record<string, string> {
+  const panelMaxHeight = 360;
+  const panelWidth = Math.min(Math.max(rect.width, 360), 500, viewportWidth - 16);
+
+  // Position below the field; if not enough space, position above
+  let top = rect.bottom + 4;
+  if (top + panelMaxHeight > viewportHeight && rect.top > panelMaxHeight) {
+    top = rect.top - panelMaxHeight - 4;
+  }
+  // Clamp to viewport
+  top = Math.max(8, Math.min(top, viewportHeight - panelMaxHeight - 8));
+
+  // Horizontal: align to field left, but clamp to viewport
+  let left = rect.left;
+  if (left + panelWidth > viewportWidth - 8) {
+    left = viewportWidth - panelWidth - 8;
+  }
+  left = Math.max(8, left);
+
+  return {
+    top: `${top}px`,
+    left: `${left}px`,
+    width: `${panelWidth}px`
+  };
 }
 
 @Component({
@@ -45,7 +81,8 @@ export interface TreeNode {
     MatIconModule,
     MatCheckboxModule,
     MatButtonModule,
-    MatTooltipModule
+    MatTooltipModule,
+    A11yModule
   ],
   templateUrl: './vocab-tree-picker.component.html',
   styleUrls: ['./vocab-tree-picker.component.scss'],
@@ -57,6 +94,10 @@ export class VocabTreePickerComponent implements OnInit, OnChanges, AfterViewChe
   @Input() multiple = false;
   @Input() selectedValues: string[] = [];
   @Input() open = false;
+  /** Name of the field the picker fills: the dialog is announced with it. */
+  @Input() label = '';
+  /** Id of the dialog element, for the field's aria-controls. */
+  @Input() panelId: string | null = null;
 
   @Output() selectionChange = new EventEmitter<string[]>();
   @Output() closed = new EventEmitter<void>();
@@ -282,38 +323,13 @@ export class VocabTreePickerComponent implements OnInit, OnChanges, AfterViewChe
         top: '50%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
-        width: '400px'
+        width: 'min(400px, calc(100vw - 16px))'
       };
       this.cdr.markForCheck();
       return;
     }
 
-    const rect = anchor.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
-    const panelMaxHeight = 360;
-    const panelWidth = Math.min(Math.max(rect.width, 360), 500);
-
-    // Position below the field; if not enough space, position above
-    let top = rect.bottom + 4;
-    if (top + panelMaxHeight > viewportHeight && rect.top > panelMaxHeight) {
-      top = rect.top - panelMaxHeight - 4;
-    }
-    // Clamp to viewport
-    top = Math.max(8, Math.min(top, viewportHeight - panelMaxHeight - 8));
-
-    // Horizontal: align to field left, but clamp to viewport
-    let left = rect.left;
-    if (left + panelWidth > viewportWidth - 8) {
-      left = viewportWidth - panelWidth - 8;
-    }
-    left = Math.max(8, left);
-
-    this.panelStyle = {
-      top: `${top}px`,
-      left: `${left}px`,
-      width: `${panelWidth}px`
-    };
+    this.panelStyle = pickerPanelPosition(anchor.getBoundingClientRect(), window.innerWidth, window.innerHeight);
     this.cdr.markForCheck();
   }
 

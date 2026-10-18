@@ -12,7 +12,8 @@
         mat-icon-button
         [matMenuTriggerFor]="contentTypeMenu"
         [disabled]="state?.isExtracting ?? false"
-        class="split-button-trigger">
+        class="split-button-trigger"
+        [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
         <mat-icon>expand_more</mat-icon>
       </button>
     </div>
@@ -42,9 +43,10 @@
 
   <!-- Progress Bar -->
   <div class="progress-bar-wrapper">
-    <mat-progress-bar 
+    <mat-progress-bar
       mode="determinate"
-      [value]="_progressPercent">
+      [value]="_progressPercent"
+      [attr.aria-label]="'PROGRESS.FIELDS_FILLED' | translate">
     </mat-progress-bar>
     <mat-icon class="progress-icon" [class.complete]="_progressPercent === 100">
       {{ _progressPercent === 100 ? 'check_circle' : 'pending' }}
