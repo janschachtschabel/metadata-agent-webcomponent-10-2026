@@ -802,6 +802,21 @@ describe('CanvasService runs that have been overtaken', () => {
       return service.getCurrentState().specialFields.find(f => f.fieldId === 'ccm:a')?.value;
     }
 
+    // Final audit 18.10. (W-L5): a type whose values were all emptied was not
+    // cached again, so the older entry brought them back.
+    it('values emptied before switching away stay empty when switching back', async () => {
+      await pageOneWithTypeACached();
+      await service.selectContentType('a.json');
+      expect(valueOfA()).toBe('Seite 1');
+
+      service.updateFieldValue('ccm:a', '');
+      await service.selectContentType('b.json');
+      await service.selectContentType('a.json');
+
+      expect(valueOfA()).withContext('the emptied value came back').not.toBe('Seite 1');
+      expect(valueOfA()).toBeFalsy();
+    });
+
     it('a reset forgets them', async () => {
       await pageOneWithTypeACached();
 

@@ -64,6 +64,24 @@ describe('SchemaService.loadCoreSchema during startup', () => {
     expect(groups).toEqual([{ id: 'mds_oeh-group' }]);
   });
 
+  // Review 18.10.: every widget on the page sets the context in ngOnInit. A
+  // second widget (or a re-attached one) emptied the schemas the first one
+  // still exports from.
+  it('keeps the loaded schemas when the same context is set again', async () => {
+    const getSchema = jasmine.createSpy('getSchema').and.resolveTo({ fields: [{ id: 'cclom:title' }], groups: [] });
+    const schemas = service(getSchema);
+    await schemas.setContext('default', 'latest');
+    await schemas.loadCoreSchema();
+    await schemas.loadContentTypeSchema('event.json');
+
+    await schemas.setContext('default');
+    await schemas.loadCoreSchema();
+    await schemas.loadContentTypeSchema('event.json');
+
+    expect(getSchema).toHaveBeenCalledTimes(2);
+    expect(schemas.getFieldById('cclom:title')).toBeDefined();
+  });
+
   it('still defaults to the default context when none is set', async () => {
     const getSchema = jasmine.createSpy('getSchema').and.resolveTo({ fields: [], groups: [] });
     const schemas = service(getSchema);
@@ -97,5 +115,59 @@ describe('SchemaService.loadContentTypeSchema', () => {
     const fields = await schemas.loadContentTypeSchema('event.json');
 
     expect(fields.map(f => f.id)).toEqual(['schema:startDate']);
+  });
+});
+
+/** Final audit 18.10. (L-11). */
+describe('SchemaService content-type schemas', () => {
+  function service(getSchema: jasmine.Spy): SchemaService {
+    const config = { debug: () => {}, error: () => {}, info: () => {} };
+    return new SchemaService({} as any, config as any, {} as any, { getSchema } as any);
+  }
+
+  it('asks once for a content-type schema while a request for it is out', async () => {
+    let answer!: (value: unknown) => void;
+    const getSchema = jasmine.createSpy('getSchema').and.returnValue(new Promise(resolve => (answer = resolve)));
+    const schemas = service(getSchema);
+    await schemas.setContext('default', 'latest');
+
+    const first = schemas.loadContentTypeSchema('event.json');
+    const second = schemas.loadContentTypeSchema('event.json');
+    answer({ fields: [{ id: 'schema:startDate' }], groups: [] });
+
+    expect(await first).toEqual(await second);
+    expect(getSchema).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not keep a schema of the previous context that answered after a switch', async () => {
+    let answerDefault!: (value: unknown) => void;
+    const getSchema = jasmine.createSpy('getSchema').and.callFake((context: string) =>
+      context === 'default'
+        ? new Promise(resolve => (answerDefault = resolve))
+        : Promise.resolve({ fields: [{ id: 'mds-field' }], groups: [] }));
+    const schemas = service(getSchema);
+    await schemas.setContext('default', 'latest');
+
+    const stale = schemas.loadContentTypeSchema('event.json');
+    await schemas.setContext('mds_oeh', 'latest');
+    answerDefault({ fields: [{ id: 'default-field' }], groups: [] });
+    await stale;
+
+    const fields = await schemas.loadContentTypeSchema('event.json');
+    expect(fields.map(f => f.id)).toEqual(['mds-field']);
+  });
+
+  it('finds a field in the schema it is asked for, not in the first one that has the id', async () => {
+    const getSchema = jasmine.createSpy('getSchema').and.callFake(async (_c: string, _v: string, file: string) => ({
+      fields: [{ id: 'schema:location', system: { datatype: file === 'event.json' ? 'array' : 'string' } }],
+      groups: [],
+    }));
+    const schemas = service(getSchema);
+    await schemas.setContext('default', 'latest');
+    await schemas.loadContentTypeSchema('event.json');
+    await schemas.loadContentTypeSchema('organization.json');
+
+    expect(schemas.getFieldById('schema:location', 'organization.json')?.system?.datatype).toBe('string');
+    expect(schemas.getFieldById('schema:location', 'event.json')?.system?.datatype).toBe('array');
   });
 });

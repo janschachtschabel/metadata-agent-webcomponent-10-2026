@@ -36,6 +36,7 @@ import { FieldValidationService, VocabularyDef } from '../../core/field-validati
 import { sameValue } from '../../core/canvas-fields';
 import { VocabTreePickerComponent } from '../shared/vocab-tree-picker/vocab-tree-picker.component';
 import { uniqueId } from '../../shared/unique-id';
+import { parseDate, parseDateTime } from '../../core/date-parsing';
 
 const DATE_FORMATS = {
   parse: { dateInput: 'DD.MM.YYYY', timeInput: 'HH:MM' },
@@ -54,6 +55,9 @@ function dateSeparator(locale: unknown): string {
   return String(locale).startsWith('en') ? '/' : '.';
 }
 
+/** Special datatypes whose lists are entered item by item as chips (W-L4). */
+const MULTI_VALUE_SCALARS = ['date', 'datetime', 'time', 'number', 'integer', 'url', 'uri', 'duration'];
+
 /**
  * Dates follow the widget language (audit U-14). FieldComponent sets the
  * locale on every language switch; it used to be fixed to de-DE.
@@ -71,12 +75,16 @@ class WidgetDateAdapter extends NativeDateAdapter {
     return super.format(date, displayFormat);
   }
 
+  /**
+   * Typed text only as DD.MM.YYYY, DD/MM/YYYY or ISO, and only a real day
+   * (W-L3); anything else is an invalid date, which the field reports. The
+   * native fallback guessed ("1" → 2001-01-01) and rolled 31.02. over.
+   */
   override parse(value: any): Date | null {
     if (typeof value === 'string') {
-      const parts = value.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
-      if (parts) {
-        return new Date(+parts[3], +parts[2] - 1, +parts[1]);
-      }
+      if (!value.trim()) return null;
+      const date = parseDate(value);
+      return date ? new Date(date.year, date.month - 1, date.day) : this.invalid();
     }
     return super.parse(value);
   }
@@ -161,6 +169,8 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   _isRadioField = false;
   _useTreePicker = false;
   _isSpecialDatatype = false;
+  /** A list of dates, addresses, numbers...: entered and shown as chips (W-L4). */
+  _chipInput = false;
   _hasVocabulary = false;
   _statusClass = '';
   _radioOptions: { label: string; value: string }[] = [];
@@ -255,7 +265,8 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   private updateCachedProperties(): void {
     this._isRadioField = this.isRadioField();
     this._useTreePicker = this.useTreePicker();
-    this._isSpecialDatatype = this.isSpecialDatatype();
+    this._chipInput = this.isMultiValuedScalar();
+    this._isSpecialDatatype = this.isSpecialDatatype() && !this._chipInput;
     this._hasVocabulary = this.hasVocabulary();
     this._statusClass = this.getStatusClass();
     this._radioOptions = this.getRadioOptions();
@@ -308,28 +319,6 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     return val;
   }
 
-  private parseDateTime(val: string): string | null {
-    // Parse "DD.MM.YYYY HH:MM" (or with "/") into ISO "YYYY-MM-DDTHH:MM"
-    const match = val.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})\s+(\d{1,2}):(\d{2})/);
-    if (match) {
-      const day = match[1].padStart(2, '0');
-      const month = match[2].padStart(2, '0');
-      const year = match[3];
-      const hour = match[4].padStart(2, '0');
-      const minute = match[5];
-      return `${year}-${month}-${day}T${hour}:${minute}`;
-    }
-    // Try date-only "DD.MM.YYYY"
-    const dateMatch = val.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
-    if (dateMatch) {
-      const day = dateMatch[1].padStart(2, '0');
-      const month = dateMatch[2].padStart(2, '0');
-      const year = dateMatch[3];
-      return `${year}-${month}-${day}T00:00`;
-    }
-    return null;
-  }
-  
   private updateFilteredOptions(): void {
     if (this.field.vocabulary?.concepts) {
       this.filteredOptions = this.field.vocabulary.concepts.map((c: any) => {
@@ -510,6 +499,12 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   
   onDateChange(event: any): void {
     const date: Date | null = event.value;
+    if (date instanceof Date && isNaN(date.getTime())) {
+      // Typed text the adapter could not read: say so instead of dropping it (W-L3).
+      this.validationError = this.translate.instant('VALIDATION.INVALID_DATE');
+      this.cdr.markForCheck();
+      return;
+    }
     if (date instanceof Date && !isNaN(date.getTime())) {
       const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       this.inputValue = iso;
@@ -556,12 +551,24 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
       if (!sameValue(null, this.field.value)) this.valueChange.emit(null);
       return;
     }
-    const iso = this.parseDateTime(this.inputValue);
-    if (iso) {
-      this.inputValue = this.formatDateTime(iso);
-      if (!sameValue(iso, this.field.value)) this.valueChange.emit(iso);
+    // Untouched: no edit, whatever the value. The display drops seconds and
+    // offset ("…T10:00:00+02:00"); parsing it back would lose them and mark
+    // the AI value as typed. An unparseable AI value stays quiet as well.
+    if (this.inputValue === this.formatDateTime(String(this.field.value ?? ''))) {
       this.validationError = '';
+    } else {
+      const iso = parseDateTime(this.inputValue);
+      if (iso) {
+        this.inputValue = this.formatDateTime(iso);
+        if (!sameValue(iso, this.field.value)) this.valueChange.emit(iso);
+        this.validationError = '';
+      } else {
+        // Typed and not a date-time (31.02., 25:99, "morgen"): say so and keep
+        // the field value (W-L2).
+        this.validationError = this.translate.instant('VALIDATION.INVALID_DATETIME');
+      }
     }
+    this.cdr.markForCheck();
   }
 
   onDateTimePickerSelect(event: any): void {
@@ -583,7 +590,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   onDateTimeTimeChange(timeStr: string): void {
     if (!timeStr) return;
     // Parse current datetime to get the date part
-    const currentIso = this.parseDateTime(this.inputValue);
+    const currentIso = parseDateTime(this.inputValue);
     let datePart: string;
     if (currentIso) {
       datePart = currentIso.split('T')[0];
@@ -604,14 +611,6 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
 
   
   // ===== Helpers =====
-  
-  private formatValue(value: unknown): string {
-    if (value === null || value === undefined) return '';
-    if (Array.isArray(value)) {
-      return value.map(v => this.getChipDisplayValue(v)).join(', ');
-    }
-    return this.getChipDisplayValue(value);
-  }
   
   private formatSingleValue(value: unknown): string {
     if (value === null || value === undefined) return '';
@@ -656,41 +655,12 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     return String(value);
   }
   
-  private parseInput(input: string): unknown {
-    const trimmed = input.trim();
-    
-    if (!trimmed) return null;
-    
-    // Array fields
-    if (this.field.multiple || this.field.datatype === 'array') {
-      return trimmed.split(/[,;]/).map(s => s.trim()).filter(s => s);
-    }
-    
-    // Boolean
-    if (this.field.datatype === 'boolean') {
-      return trimmed.toLowerCase() === 'true' || trimmed === 'ja' || trimmed === '1';
-    }
-    
-    // Number
-    if (this.field.datatype === 'number') {
-      return parseFloat(trimmed.replace(',', '.'));
-    }
-    
-    return trimmed;
-  }
-  
   getStatusClass(): string {
     const classes: string[] = [];
     
     switch (this.field.status) {
       case FieldStatus.FILLED:
         classes.push('status-filled');
-        break;
-      case FieldStatus.EXTRACTING:
-        classes.push('status-extracting');
-        break;
-      case FieldStatus.ERROR:
-        classes.push('status-error');
         break;
       default:
         classes.push(this.field.isRequired ? 'status-required' : 'status-empty');
@@ -701,19 +671,6 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     }
     
     return classes.join(' ');
-  }
-  
-  getStatusIcon(): string {
-    switch (this.field.status) {
-      case FieldStatus.FILLED:
-        return 'check_circle';
-      case FieldStatus.EXTRACTING:
-        return 'sync';
-      case FieldStatus.ERROR:
-        return 'error';
-      default:
-        return this.field.isRequired ? 'warning' : 'radio_button_unchecked';
-    }
   }
   
   hasVocabulary(): boolean {
@@ -828,14 +785,14 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     return specialTypes.includes(this.field.datatype || '');
   }
   
-  getVocabularyLabels(): string[] {
-    if (!this.field.vocabulary?.concepts) return [];
-    return this.field.vocabulary.concepts.map((c: any) => {
-      if (typeof c.label === 'string') return c.label;
-      return c.label['de'] || c.label['en'] || '';
-    });
+  /**
+   * A multi-valued field of a scalar special datatype (person.json schema:url,
+   * datetime lists in v1.8.0): one input could neither show nor keep a list.
+   */
+  private isMultiValuedScalar(): boolean {
+    return !!this.field.multiple && MULTI_VALUE_SCALARS.includes(this.field.datatype || '');
   }
-  
+
   /**
    * Returns display label for a chip value.
    * If the value is a URI and vocabulary is available, returns the vocabulary label.

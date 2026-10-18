@@ -37,7 +37,8 @@
     },
     "BOOLEAN": {
       "TRUE": "Ja",
-      "FALSE": "Nein"
+      "FALSE": "Nein",
+      "EMPTY": "Bitte auswählen"
     },
     "RADIO": {
       "NO_SELECTION": "keine Angabe"
@@ -53,7 +54,8 @@
     "AI_SUGGESTION": "KI-Vorschlag",
     "DATE_PLACEHOLDER": "TT.MM.JJJJ",
     "DATETIME_PLACEHOLDER": "TT.MM.JJJJ HH:MM",
-    "DURATION_PLACEHOLDER": "z. B. PT2H, P1D, 2 Stunden"
+    "DURATION_PLACEHOLDER": "z. B. PT2H, P1D, 2 Stunden",
+    "OPEN_CLOCK": "Uhr öffnen"
   },
   "PREVIEW": {
     "TITLE": "Vorschaubild",
@@ -81,8 +83,8 @@
     "INVALID_URL": "Ungültige URL",
     "INVALID_NUMBER": "Ungültige Zahl",
     "INVALID_BOOLEAN": "Ungültiger Wahrheitswert (ja/nein)",
-    "INVALID_DATE": "Ungültiges Datum (Format: JJJJ-MM-TT)",
-    "INVALID_DATETIME": "Ungültiges Datum/Uhrzeit",
+    "INVALID_DATE": "Ungültiges Datum (Format: TT.MM.JJJJ)",
+    "INVALID_DATETIME": "Ungültiges Datum/Uhrzeit (Format: TT.MM.JJJJ HH:MM)",
     "MIN_LENGTH": "Mindestlänge: {{min}} Zeichen",
     "MAX_LENGTH": "Maximale Länge: {{max}} Zeichen",
     "MIN_VALUE": "Mindestwert: {{min}}",
@@ -152,5 +154,9 @@
     "INCOMPLETE_RESPONSE": "Die Antwort des Metadaten-Agenten enthielt kein Ergebnis.",
     "REQUEST_ID": "Anfrage-ID: {{id}}",
     "SCHEMA_UNAVAILABLE": "Die Felder der Inhaltsart „{{type}}“ konnten nicht geladen werden. Bitte später erneut versuchen."
+  },
+  "ANNOUNCE": {
+    "EXTRACTION_STARTED": "Extraktion läuft …",
+    "EXTRACTION_DONE": "Extraktion abgeschlossen. Ausgefüllte Felder: {{count}}."
   }
 }

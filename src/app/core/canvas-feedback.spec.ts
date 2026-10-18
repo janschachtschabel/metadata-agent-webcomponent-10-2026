@@ -1,4 +1,4 @@
-import { assertUsable, describeFailure, generationWarning } from './canvas-feedback';
+import { assertUsable, describeFailure, generationWarning, uploadFailure } from './canvas-feedback';
 
 const i18n = {
   instant: (key: string, params?: object) => (params ? `${key} ${JSON.stringify(params)}` : key),
@@ -72,6 +72,31 @@ describe('canvas-feedback', () => {
         'EXTRACTION_RESULT.PARTIAL {"extracted":7,"total":10,"failed":3} ' +
           'EXTRACTION_RESULT.CONTENT_TYPE_UNCERTAIN {"type":"Veranstaltung"}'
       );
+    });
+  });
+
+  // Strand A, 18.10.: /upload answers a failed write with 422/502 ErrorResponse
+  // that may name a node, like the timeout already did.
+  describe('uploadFailure', () => {
+    const body = (extra: object) => ({
+      status: 502,
+      error: { detail: 'Repository antwortet nicht', error: { code: 'UPSTREAM_ERROR', message: 'Repository antwortet nicht', request_id: 'r1' }, ...extra },
+    });
+
+    it('names a node that still exists after a 502', () => {
+      expect(uploadFailure(body({ node: { nodeId: 'n7', url: 'https://repo/n7' } }), i18n)).toBe(
+        'Repository antwortet nicht ALERTS.UPLOAD_TIMEOUT_NODE_KEPT {"nodeId":"n7"} (EXTRACTION_RESULT.REQUEST_ID {"id":"r1"})'
+      );
+    });
+
+    it('says that a node created on the way was removed again', () => {
+      expect(uploadFailure(body({ discarded_node: 'n8' }), i18n)).toBe(
+        'Repository antwortet nicht ALERTS.UPLOAD_TIMEOUT_DISCARDED (EXTRACTION_RESULT.REQUEST_ID {"id":"r1"})'
+      );
+    });
+
+    it('is the plain cause without a node', () => {
+      expect(uploadFailure(body({}), i18n)).toBe('Repository antwortet nicht (EXTRACTION_RESULT.REQUEST_ID {"id":"r1"})');
     });
   });
 });

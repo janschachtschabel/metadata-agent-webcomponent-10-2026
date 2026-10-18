@@ -3,7 +3,9 @@ import { TranslateService } from '@ngx-translate/core';
 import { BehaviorSubject } from 'rxjs';
 import { WidgetDebug } from './debug';
 
-const STORAGE_KEY = 'app_language';
+const STORAGE_KEY = 'metadata-agent-canvas.language';
+/** Name used up to 3.0.0; host pages may use it for their own setting (S-2). */
+const LEGACY_STORAGE_KEY = 'app_language';
 const SUPPORTED_LANGUAGES = ['de', 'en'];
 const DEFAULT_LANGUAGE = 'de';
 
@@ -14,7 +16,9 @@ const DEFAULT_LANGUAGE = 'de';
  */
 function readStoredLanguage(): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEY);
+    // The old name only until the widget stored under its own; never removed,
+    // it may be the host page's.
+    return localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
   } catch {
     return null;
   }
@@ -53,7 +57,7 @@ export class I18nService {
   private initLanguage(): void {
     // Set supported languages
     this.translate.addLangs(SUPPORTED_LANGUAGES);
-    this.translate.setDefaultLang(DEFAULT_LANGUAGE);
+    this.translate.setFallbackLang(DEFAULT_LANGUAGE);
 
     // Try to restore from localStorage
     const savedLang = readStoredLanguage();
@@ -106,7 +110,7 @@ export class I18nService {
    * the cached (possibly empty) translations.
    */
   reloadTranslations(): void {
-    const lang = this.translate.currentLang || this.translate.defaultLang || 'de';
+    const lang = this.translate.getCurrentLang() || this.translate.getFallbackLang() || DEFAULT_LANGUAGE;
     if (WidgetDebug.enabled) console.debug(`[i18n] reloadTranslations: resetting "${lang}" cache and re-fetching...`);
     // Reset ALL cached languages so none keep stale data
     for (const l of SUPPORTED_LANGUAGES) {

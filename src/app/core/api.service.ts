@@ -4,12 +4,6 @@ import { firstValueFrom } from 'rxjs';
 import { LoggerService } from './logger.service';
 import { getInitialApiUrl, normalizeApiUrl } from './api-url';
 
-export interface SchemaInfo {
-  contextName: string;
-  schemaVersion: string;
-  schemas: string[];
-}
-
 export interface SchemaField {
   id: string;
   group?: string;
@@ -103,62 +97,6 @@ export interface GenerateResponse {
   processing: GenerateProcessing;
 }
 
-export interface ValidateRequest {
-  metadata: Record<string, any>;
-  context?: string;
-  version?: string;
-  schema_file?: string;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  errors: Array<{
-    field: string;
-    message: string;
-    type: string;
-  }>;
-  warnings: Array<{
-    field: string;
-    message: string;
-  }>;
-}
-
-export interface ExtractFieldRequest {
-  text?: string;
-  source_url?: string;
-  input_source?: 'text' | 'url';
-  context?: string;
-  version?: string;
-  schema_file: string;
-  field_id: string;
-  existing_metadata?: Record<string, any>;
-  language?: string;
-  normalize?: boolean;
-  llm_provider?: string;
-  llm_model?: string;
-}
-
-export interface ExtractFieldResponse {
-  field_id: string;
-  field_label: string;
-  value: any;
-  raw_value?: any;
-  previous_value?: any;
-  changed: boolean;
-  normalized: boolean;
-  context: string;
-  version: string;
-  schema_file: string;
-  processing_time_ms: number;
-}
-
-export interface ContentTypeInfo {
-  label: string;
-  schemaFile: string;
-  icon?: string;
-  description?: string;
-}
-
 export interface ScreenshotRequest {
   url: string;
   method?: 'pageshot' | 'playwright';
@@ -239,28 +177,11 @@ export class ApiService {
   // ===== Schema Endpoints =====
 
   /**
-   * Get list of available schemas for a context
-   */
-  async getSchemaList(context: string = 'default', version: string = 'latest'): Promise<SchemaInfo> {
-    const url = `${this.apiUrl}/info/schemas/${context}/${version}`;
-    this.logger.debug(`Fetching schema list: ${url}`);
-    
-    try {
-      const response = await firstValueFrom(
-        this.http.get<SchemaInfo>(url, { headers: this.getHeaders() })
-      );
-      return response;
-    } catch (error) {
-      this.logger.error('Failed to fetch schema list', error);
-      throw error;
-    }
-  }
-
-  /**
    * Get a specific schema file
    */
   async getSchema(context: string, version: string, schemaFile: string): Promise<{ fields: SchemaField[] }> {
-    const url = `${this.apiUrl}/info/schema/${context}/${version}/${schemaFile}`;
+    // Escaped: context and version come from host attributes (S-2).
+    const url = `${this.apiUrl}/info/schema/${[context, version, schemaFile].map(encodeURIComponent).join('/')}`;
     this.logger.debug(`Fetching schema: ${url}`);
     
     try {
@@ -272,21 +193,6 @@ export class ApiService {
       this.logger.error(`Failed to fetch schema ${schemaFile}`, error);
       throw error;
     }
-  }
-
-  /**
-   * Get all available content types for a context
-   */
-  async getContentTypes(context: string = 'default', version: string = 'latest'): Promise<ContentTypeInfo[]> {
-    const schemaInfo = await this.getSchemaList(context, version);
-    
-    // Filter out core.json and map to ContentTypeInfo
-    return schemaInfo.schemas
-      .filter(s => s !== 'core.json')
-      .map(schemaFile => ({
-        label: schemaFile.replace('.json', ''),
-        schemaFile: schemaFile
-      }));
   }
 
   // ===== Metadata Endpoints =====
@@ -334,65 +240,6 @@ export class ApiService {
       return response;
     } catch (error) {
       this.logger.error('Failed to generate metadata', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Validate metadata against schema
-   */
-  async validate(request: ValidateRequest): Promise<ValidationResult> {
-    const url = `${this.apiUrl}/validate`;
-    this.logger.debug('Validating metadata', request);
-    
-    try {
-      const response = await firstValueFrom(
-        this.http.post<ValidationResult>(url, request, { headers: this.getHeaders() })
-      );
-      return response;
-    } catch (error) {
-      this.logger.error('Failed to validate metadata', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Export metadata as Markdown
-   */
-  async exportMarkdown(metadata: Record<string, any>, context: string = 'default', version: string = 'latest'): Promise<string> {
-    const url = `${this.apiUrl}/export/markdown`;
-    
-    try {
-      const response = await firstValueFrom(
-        this.http.post<{ markdown: string }>(url, {
-          metadata,
-          context,
-          version
-        }, { headers: this.getHeaders() })
-      );
-      return response.markdown;
-    } catch (error) {
-      this.logger.error('Failed to export markdown', error);
-      throw error;
-    }
-  }
-
-  // ===== Single Field Extraction =====
-
-  /**
-   * Extract/normalize a single field via LLM
-   */
-  async extractField(request: ExtractFieldRequest): Promise<ExtractFieldResponse> {
-    const url = `${this.apiUrl}/extract-field`;
-    this.logger.debug('Extracting single field', request);
-    
-    try {
-      const response = await firstValueFrom(
-        this.http.post<ExtractFieldResponse>(url, request, { headers: this.getHeaders() })
-      );
-      return response;
-    } catch (error) {
-      this.logger.error(`Failed to extract field ${request.field_id}`, error);
       throw error;
     }
   }
@@ -453,22 +300,6 @@ export class ApiService {
     } catch (error) {
       this.logger.error('Screenshot capture failed', error);
       return null;
-    }
-  }
-
-  // ===== Health Check =====
-
-  async healthCheck(): Promise<{ status: string; version: string }> {
-    const url = `${this.apiUrl}/health`;
-    
-    try {
-      const response = await firstValueFrom(
-        this.http.get<{ status: string; version: string }>(url)
-      );
-      return response;
-    } catch (error) {
-      this.logger.error('API health check failed', error);
-      throw error;
     }
   }
 }

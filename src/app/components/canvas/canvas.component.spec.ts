@@ -176,6 +176,7 @@ describe('CanvasComponent actions', () => {
     canvas = {
       bindToInstance: () => undefined,
       getMetadataForRepository: () => ({ 'cclom:title': 'Titel' }),
+      getMetadataForExport: () => ({ 'cclom:title': 'Titel' }),
       getCurrentState: () => ({ userText: 'Quelltext' }),
       startExtraction: jasmine.createSpy('startExtraction'),
     };
@@ -201,6 +202,15 @@ describe('CanvasComponent actions', () => {
 
     expect(api.upload).toHaveBeenCalledTimes(1);
     expect(component.uploading).toBeFalse();
+  });
+
+  it('sends no upload while an extraction runs (L-10)', async () => {
+    canvas.getCurrentState = () => ({ userText: 'Quelltext', isExtracting: true });
+    const component = create();
+
+    await component.uploadToRepository();
+
+    expect(api.upload).not.toHaveBeenCalled();
   });
 
   it('allows a new upload after a failed one (U-02)', async () => {
@@ -499,14 +509,19 @@ describe('CanvasComponent actions', () => {
 
   });
 
-  it('sends no metadata change after it was destroyed (U-16)', async () => {
-    const component = create();
-    const emitted = spyOn(component.metadataChange, 'emit');
-    (component as any).scheduleMetadataChange();
+  it('sends no metadata change after it was destroyed (U-16)', () => {
+    jasmine.clock().install(); // the 50 ms debounce without waiting for it (T-3)
+    try {
+      const component = create();
+      const emitted = spyOn(component.metadataChange, 'emit');
+      (component as any).scheduleMetadataChange();
 
-    component.ngOnDestroy();
-    await new Promise(resolve => setTimeout(resolve, 80));
+      component.ngOnDestroy();
+      jasmine.clock().tick(100);
 
-    expect(emitted).not.toHaveBeenCalled();
+      expect(emitted).not.toHaveBeenCalled();
+    } finally {
+      jasmine.clock().uninstall();
+    }
   });
 });

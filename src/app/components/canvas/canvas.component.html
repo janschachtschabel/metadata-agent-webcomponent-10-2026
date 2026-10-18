@@ -7,3 +7,8 @@
 <app-widget-notice [notice]="notice" (closed)="onNoticeClosed($event)"></app-widget-notice>
 
 <ng-container #layoutHost></ng-container>
+
+<!-- Start and end of an extraction and its warnings, for screen readers (U-1).
+     Always in the DOM: a live region inserted together with its text is often
+     not announced. Filled a tick after it was emptied, so a repeat is heard. -->
+<div class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ announcement }}</div>

@@ -15,7 +15,6 @@ import {
   ViewChild,
   ViewContainerRef,
   ComponentRef,
-  DoCheck,
 } from '@angular/core';
 import { Subject, skip, takeUntil } from 'rxjs';
 
@@ -53,8 +52,11 @@ import { Notice, WidgetNoticeComponent } from '../shared/widget-notice/widget-no
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [CanvasService]
 })
-export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
-  /** Readable widget version (accessible via element.version) */
+export class CanvasComponent implements OnInit, OnDestroy, OnChanges {
+  /**
+   * Widget version. The element does not expose it (only inputs become element
+   * properties); hosts read customElements.get('metadata-agent-canvas').widgetVersion.
+   */
   readonly version = WIDGET_VERSION;
 
   /** Unique component ID for event deduplication across same-instance components */
@@ -280,14 +282,20 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
   // Content type: set schema file name or URI from outside (e.g. 'event.json' or 'http://w3id.org/openeduhub/vocabs/contentTypes/event')
   @Input() set contentType(value: string) {
     if (value) {
+      this._hostContentType = value;
       this._pendingContentType = value;
       // Only apply immediately if content types are already loaded (i.e. after ngOnInit).
       // Otherwise ngOnInit will re-apply the pending content type after core schema is loaded.
       if (this.contentTypes.length > 0) {
-        this.applyContentType(value);
+        void this.hostTask(() => this.applyContentType(value));
       }
     }
   }
+  /**
+   * The type the host set last, until the editor picks one; an import without
+   * a metadataset of its own takes it (F2).
+   */
+  private _hostContentType: string | null = null;
   
   // Input mode: 'text' | 'url' | 'nodeId'
   @Input() set inputMode(value: 'text' | 'url' | 'nodeId') {
@@ -302,7 +310,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
     if (value !== undefined && value !== null) {
       this.ngZone.run(() => {
         this.userText = value;
-        this.cdr.markForCheck();
+        this.markForCheck();
       });
     }
   }
@@ -311,7 +319,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
     if (value !== undefined && value !== null) {
       this.ngZone.run(() => {
         this.sourceUrl = value;
-        this.cdr.markForCheck();
+        this.markForCheck();
       });
     }
   }
@@ -336,7 +344,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
         this.userText = '';
         this.sourceUrl = '';
         this.nodeId = '';
-        this.cdr.markForCheck();
+        this.markForCheck();
       });
     }
   }
@@ -447,7 +455,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
       this.sourceUrl = url;
     }
 
-    this.cdr.markForCheck();
+    this.markForCheck();
 
     // Trigger extraction immediately
     this._autoExtractPending = true;
@@ -463,15 +471,16 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
 
     // Subscribe to state changes (always, even if schema load fails)
     this.canvas.state$.pipe(takeUntil(this.destroy$)).subscribe((state: CanvasState) => {
+      this.announceProgress(this.state, state);
       this.state = state;
       // Debounce metadataChange emissions (50ms) to avoid flooding the host page.
-      // Skip emission entirely while extracting — the expensive getMetadataForRepository()
+      // Skip emission entirely while extracting — the expensive getMetadataForExport()
       // + ngZone.run() would cause full CD cycles that block scrolling.
       // The final emission fires automatically when isExtracting turns false.
       if (this._isPrimary && !state.isExtracting) {
         this.scheduleMetadataChange();
       }
-      this.cdr.markForCheck();
+      this.markForCheck();
     });
     
     // Subscribe to language changes: content-type list and the form's labels (U-04).
@@ -492,8 +501,16 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
       
       // Re-apply pending content type now that core schema is loaded (URI resolution requires it)
       if (this._pendingContentType) {
-        await this.applyContentType(this._pendingContentType);
+        const pending = this._pendingContentType;
         this._pendingContentType = null;
+        // After an import the host made meanwhile (review-demo.html: the
+        // attribute plus metadataInput after whenDefined), and only if the
+        // import did not bring this type already: switching would cut the
+        // import short or replace its form (F1).
+        await this.hostTask(async () => {
+          if (this.schema.resolveSchemaFileOrUri(pending) === this.canvas.getCurrentState().selectedContentType) return;
+          await this.applyContentType(pending);
+        });
       }
     } catch (error: any) {
       console.error('Failed to initialize schema:', error);
@@ -502,10 +519,11 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
         `Schema initialization failed: ${cause}`));
     }
     
-    this.cdr.markForCheck();
+    this.markForCheck();
   }
   
   ngOnChanges(changes: SimpleChanges): void {
+    this.markForCheck(); // an input of the element may be bound to the layout
     if (changes['metadataInput']?.currentValue) {
       void this.loadMetadata(changes['metadataInput'].currentValue);
     }
@@ -516,6 +534,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
     this.settleQuestion(false);
     // A pending metadataChange would fire on an element that is gone.
     clearTimeout(this._metadataChangeTimer);
+    clearTimeout(this.announceTimer);
     InstanceRegistry.unregister(this._instanceId, this._componentId);
     this.destroy$.next();
     this.destroy$.complete();
@@ -557,7 +576,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
         if (succeeded && this.userText === text) {
           this.userText = '';
         }
-        this.cdr.markForCheck();
+        this.markForCheck();
       });
     }));
   }
@@ -569,7 +588,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
     }
     this.ngZone.runOutsideAngular(() => setTimeout(async () => {
       await this.canvas.startUrlExtraction(url);
-      this.ngZone.run(() => this.cdr.markForCheck());
+      this.ngZone.run(() => this.markForCheck());
     }));
   }
   
@@ -580,28 +599,41 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
     }
     this.ngZone.runOutsideAngular(() => setTimeout(async () => {
       await this.canvas.startNodeIdExtraction(nodeId);
-      this.ngZone.run(() => this.cdr.markForCheck());
+      this.ngZone.run(() => this.markForCheck());
     }));
   }
   
   async selectContentType(contentType: ContentType): Promise<void> {
+    // The editor's choice replaces the host's: a later import without a
+    // metadataset must not rebuild the form as the host's type.
+    this._hostContentType = null;
     await this.canvas.changeContentTypeManually(contentType.schemaFile, contentType.label, contentType.icon);
-    this.cdr.markForCheck();
+    this.markForCheck();
   }
   
-  private async applyContentType(schemaFileOrUri: string): Promise<void> {
+  /**
+   * The host's type. Settles once the type and its fields are in the form: a
+   * re-run it starts goes on, but the host queue does not wait for it - the
+   * next metadata-input (the Prüftisch moves on) would wait up to a whole
+   * /generate call and then be preceded by the previous node's result. That
+   * import supersedes the re-run.
+   */
+  private applyContentType(schemaFileOrUri: string): Promise<void> {
     // Resolve URI to schema filename if needed (e.g. 'http://w3id.org/openeduhub/vocabs/contentTypes/event' → 'event.json')
     const schemaFile = this.schema.resolveSchemaFileOrUri(schemaFileOrUri);
-    // Find label from loaded content types, or use schema file name as fallback
+    // Label and icon of a known type; otherwise the service names it (and
+    // core.json, "general", gets none - W-L6).
     const ct = this.contentTypes.find(c => c.schemaFile === schemaFile);
-    const label = ct?.label || schemaFile;
-    const icon = ct?.icon || 'category';
-    await this.canvas.changeContentTypeManually(schemaFile, label, icon);
-    this.cdr.markForCheck();
+    return new Promise<void>((applied, failed) => {
+      this.canvas.changeContentTypeManually(schemaFile, ct?.label, ct?.icon, applied).then(() => {
+        this.markForCheck();
+        applied();
+      }, failed);
+    });
   }
   
   submit(): void {
-    const metadata = this.canvas.getMetadataForRepository();
+    const metadata = this.canvas.getMetadataForExport();
     if (this._isPrimary) {
       this.metadataSubmit.emit(metadata);
     }
@@ -611,15 +643,16 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
   uploading = false;
 
   async uploadToRepository(repository: 'staging' | 'prod' = 'staging'): Promise<void> {
-    // A second click while the request is out would create the node twice.
-    if (this.uploading) return;
+    // A second click while the request is out would create the node twice;
+    // during an extraction it would send the form from before the result (L-10).
+    if (this.uploading || this.canvas.getCurrentState().isExtracting) return;
     this.uploading = true;
-    this.cdr.markForCheck();
+    this.markForCheck();
     try {
       await this.runUpload(repository);
     } finally {
       this.uploading = false;
-      this.cdr.markForCheck();
+      this.markForCheck();
     }
   }
 
@@ -701,7 +734,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
   // ===== JSON Import/Export =====
   
   downloadJson(): void {
-    const metadata = this.canvas.getMetadataForRepository();
+    const metadata = this.canvas.getMetadataForExport();
     const json = JSON.stringify(metadata, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -715,7 +748,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
   async onJsonLoaded(jsonData: Record<string, unknown>): Promise<void> {
     try {
       await this.canvas.importJsonData(jsonData);
-      this.cdr.markForCheck();
+      this.markForCheck();
     } catch (error) {
       console.error('Error importing JSON:', error);
       this.say('ALERTS.JSON_LOAD_ERROR', undefined, 'error');
@@ -736,21 +769,21 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
   private say(key: string, params?: Record<string, unknown>, kind: Notice['kind'] = 'info', fallback?: string): void {
     this.settleQuestion(false);
     this.notice = { text: fallback ? translated(this.i18n, key, params, fallback) : this.i18n.instant(key, params), kind };
-    this.cdr.markForCheck();
+    this.markForCheck();
   }
 
   /** Ask for confirmation; resolves with the answer (false for cancel/Escape). */
   private ask(key: string, params?: Record<string, unknown>, destructive = false): Promise<boolean> {
     this.settleQuestion(false);
     this.notice = { text: this.i18n.instant(key, params), kind: 'info', question: true, destructive };
-    this.cdr.markForCheck();
+    this.markForCheck();
     return new Promise(resolve => (this.pendingAnswer = resolve));
   }
 
   onNoticeClosed(confirmed: boolean): void {
     this.notice = null;
     this.settleQuestion(confirmed);
-    this.cdr.markForCheck();
+    this.markForCheck();
   }
 
   private settleQuestion(confirmed: boolean): void {
@@ -759,19 +792,70 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
     answer?.(confirmed);
   }
 
+  // ===== ANNOUNCEMENTS =====
+
+  /** Text of the live region (canvas template). */
+  announcement = '';
+  private announceTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Start and end of an extraction, with its warning (U-1). */
+  private announceProgress(before: CanvasState | null, after: CanvasState): void {
+    const started = !before?.isExtracting && after.isExtracting;
+    const finished = !!before?.isExtracting && !after.isExtracting;
+    if (started) {
+      this.announce(this.i18n.instant('ANNOUNCE.EXTRACTION_STARTED'));
+    } else if (finished && !after.extractionError) {
+      // An error is announced by its own role=alert message in the layout.
+      const done = this.i18n.instant('ANNOUNCE.EXTRACTION_DONE', { count: after.filledFields ?? 0 });
+      this.announce(after.extractionWarning ? `${done} ${after.extractionWarning}` : done);
+    }
+  }
+
+  /** Emptied first and filled a tick later: the same text again is announced again. */
+  private announce(text: string): void {
+    this.announcement = '';
+    clearTimeout(this.announceTimer);
+    this.announceTimer = setTimeout(() => {
+      this.announcement = text;
+      this.markForCheck();
+    });
+  }
+
   // ===== HELPERS =====
 
   private scheduleMetadataChange(): void {
     clearTimeout(this._metadataChangeTimer);
     this._metadataChangeTimer = setTimeout(() => {
-      this.ngZone.run(() => this.metadataChange.emit(this.canvas.getMetadataForRepository()));
+      this.ngZone.run(() => this.metadataChange.emit(this.canvas.getMetadataForExport()));
     }, 50);
   }
 
+  /**
+   * What the host hands in (metadata-input, content-type) is applied in the
+   * order it was set, each after the previous one: a type choice started while
+   * an import loads its schemas supersedes the import, and vice versa (F1/F2).
+   * A type's task ends when the type is applied, not after its re-run.
+   * Starts at once when nothing is pending.
+   */
+  private hostTask(task: () => Promise<void>): Promise<void> {
+    const started = this.hostQueue ? this.hostQueue.then(task) : task();
+    const done = started.catch(() => undefined); // each task reports its own failure
+    this.hostQueue = done;
+    void done.then(() => {
+      if (this.hostQueue === done) this.hostQueue = null;
+    });
+    return started;
+  }
+  private hostQueue: Promise<void> | null = null;
+
   /** Metadata handed in by the host (`metadata-input`); a failure is shown, not swallowed. */
-  private async loadMetadata(metadata: Record<string, unknown>): Promise<void> {
+  private loadMetadata(metadata: Record<string, unknown>): Promise<void> {
+    return this.hostTask(() => this.importFromHost(metadata));
+  }
+
+  private async importFromHost(metadata: Record<string, unknown>): Promise<void> {
     try {
-      await this.canvas.importJsonData(metadata);
+      await this.canvas.importJsonData(metadata, this._hostContentType);
       // Read after the import: the host may have set the image meanwhile.
       if (this._hostPreviewImage && !this.canvas.getCurrentState().previewImageUrl) {
         this.canvas.setPreviewImage(this._hostPreviewImage);
@@ -785,7 +869,7 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
   
   private async refreshContentTypes(): Promise<void> {
     this.contentTypes = await this.schema.getContentTypes();
-    this.cdr.markForCheck();
+    this.markForCheck();
   }
   
   // ===== LAYOUT HELPERS =====
@@ -813,13 +897,15 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
   }
 
   /**
-   * Bindings in the template were re-read whenever the canvas was checked. A
-   * layout created in code (OnPush) re-reads its bindings only when its own view
-   * is marked; this keeps it in step with the canvas. The layout itself still
-   * only updates when a value actually changed.
+   * A layout created in code (OnPush) re-reads its bindings only when its own
+   * view is marked. Everything that changes a bound value marks it through
+   * this: the state stream, the element's inputs (ngOnChanges) and the
+   * canvas's own changes. Marking it in ngDoCheck checked the whole layout
+   * tree on every tick (P-1). The layout's own events mark it themselves.
    */
-  ngDoCheck(): void {
+  private markForCheck(): void {
     this.layoutRef?.changeDetectorRef.markForCheck();
+    this.cdr.markForCheck();
   }
 
   /**
@@ -866,9 +952,11 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
       userTextChange: (text: string) => { this.userText = text; },
       sourceUrlChange: (url: string) => { this.sourceUrl = url; },
       nodeIdChange: (nodeId: string) => { this.nodeId = nodeId; },
-      startExtraction: () => this.startExtraction(),
-      startUrlExtraction: (url: string) => this.startUrlExtraction(url),
-      startNodeIdExtraction: (nodeId: string) => this.startNodeIdExtraction(nodeId),
+      // The buttons stay focusable while an extraction runs (aria-disabled, U-1);
+      // a click on them then does nothing.
+      startExtraction: () => this.whenIdle(() => this.startExtraction()),
+      startUrlExtraction: (url: string) => this.whenIdle(() => this.startUrlExtraction(url)),
+      startNodeIdExtraction: (nodeId: string) => this.whenIdle(() => this.startNodeIdExtraction(nodeId)),
       inputModeChange: (mode: 'text' | 'url' | 'nodeId') => { this._inputMode = mode; },
       reset: () => this.reset(),
       reloadFromPage: () => this.reloadFromPage.emit(),
@@ -884,6 +972,10 @@ export class CanvasComponent implements OnInit, OnDestroy, OnChanges, DoCheck {
       dismissWarning: () => this.canvas.clearWarning(),
       screenshotToggle: (enabled: boolean) => this.canvas.setScreenshotEnabled(enabled),
     };
+  }
+
+  private whenIdle(action: () => void): void {
+    if (!this.state?.isExtracting) action();
   }
 
   /**

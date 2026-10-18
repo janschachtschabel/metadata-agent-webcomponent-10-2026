@@ -45,7 +45,7 @@ describe('canvas-metadata', () => {
       coreFields: [field({ fieldId: 'cclom:title', value: 'Konzert', status: FieldStatus.FILLED, isAiGenerated: true })],
     };
 
-    const result = exportMetadata(state, shapeExpander, schema, 'de');
+    const result = exportMetadata(state, shapeExpander, schema, 'de', new Set());
 
     expect(result['metadata']).toEqual({ 'cclom:title': 'Konzert' });
     expect(result['metadataset']).toBe('event.json');

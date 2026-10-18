@@ -42,7 +42,7 @@
   </div>
 
   <!-- ===== EXTRACTION WARNING ===== -->
-  <div class="extraction-warning" *ngIf="state?.extractionWarning" role="status">
+  <div class="extraction-warning" *ngIf="state?.extractionWarning">
     <mat-icon>warning</mat-icon>
     <span>{{ state!.extractionWarning }}</span>
   </div>
@@ -118,9 +118,9 @@
         mat-flat-button
         *ngIf="showUploadButton"
         class="btn-action"
-        [disabled]="!state?.filledFields || uploading"
-        [disabledInteractive]="uploading"
-        (click)="upload.emit()">
+        [disabled]="!state?.filledFields || uploading || (state?.isExtracting ?? false)"
+        [disabledInteractive]="uploading || (state?.isExtracting ?? false)"
+        (click)="state?.isExtracting || upload.emit()">
         <mat-icon>cloud_upload</mat-icon>
         <span>{{ 'CONTROLS.UPLOAD' | translate }}</span>
       </button>

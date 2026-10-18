@@ -29,7 +29,7 @@
   font-size: 13px;
   
   mat-icon {
-    color: #ba1a1a;
+    color: var(--md-error, #ba1a1a);
     flex-shrink: 0;
   }
   
@@ -305,7 +305,7 @@
     
     .upload-btn {
       &:not(:disabled):not([aria-disabled='true']) {
-        color: #00874d;
+        color: var(--md-tertiary, #00874d);
       }
     }
   }

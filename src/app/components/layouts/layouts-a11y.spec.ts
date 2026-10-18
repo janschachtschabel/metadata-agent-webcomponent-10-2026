@@ -28,19 +28,39 @@ const LAYOUTS: [string, Type<unknown>][] = [
   ['prueftisch-org', PrueftischOrgLayoutComponent],
 ];
 
-function filledState(): CanvasState {
-  const title = {
+function field(overrides: Partial<CanvasFieldState>): CanvasFieldState {
+  return {
     fieldId: 'cclom:title', label: 'Titel', group: 'basics', groupLabel: 'Grunddaten',
     groupOrder: 1, schemaName: 'Core', aiFillable: true, repoField: true,
     status: FieldStatus.FILLED, value: 'Bruchrechnung', confidence: 1, isRequired: true,
     datatype: 'string', multiple: false, isAiGenerated: true,
+    ...overrides,
   } as unknown as CanvasFieldState;
+}
+
+/**
+ * One field of every kind of input (final audit 18.10., T-2): the check ran
+ * with a single text field, so picker, date, time, radio and chip markup were
+ * never looked at.
+ */
+function filledState(): CanvasState {
+  const subjects = ['Mathematik', 'Physik', 'Chemie', 'Biologie', 'Informatik'];
+  const fields = [
+    field({}),
+    field({ fieldId: 'ccm:taxonid', label: 'Fach', isRequired: false, value: ['http://w3id.org/s/0'], multiple: true,
+      vocabulary: { type: 'closed', concepts: subjects.map((label, i) => ({ uri: `http://w3id.org/s/${i}`, label })) } as any }),
+    field({ fieldId: 'schema:startDate', label: 'Datum', datatype: 'date', value: '2026-05-03', isRequired: false }),
+    field({ fieldId: 'schema:startTime', label: 'Uhrzeit', datatype: 'time', value: '14:30', isRequired: false }),
+    field({ fieldId: 'schema:doorTime', label: 'Einlass', datatype: 'datetime', value: '2026-05-03T14:00', isRequired: false }),
+    field({ fieldId: 'schema:isAccessibleForFree', label: 'Kostenlos', datatype: 'boolean', value: 'true', isRequired: false }),
+    field({ fieldId: 'cclom:general_keyword', label: 'Schlagwörter', datatype: 'array', multiple: true, value: ['Brüche', 'Zahlen'], isRequired: false }),
+  ];
   return {
     ...createInitialState(),
-    coreFields: [title],
-    fieldGroups: [{ id: 'basics', label: 'Grunddaten', schemaName: 'Core', fields: [title], isCore: true }],
-    totalFields: 1,
-    filledFields: 1,
+    coreFields: fields,
+    fieldGroups: [{ id: 'basics', label: 'Grunddaten', schemaName: 'Core', fields, isCore: true }],
+    totalFields: fields.length,
+    filledFields: fields.length,
     contentTypeLabel: 'Veranstaltung',
     selectedContentType: 'event.json',
     detectedContentType: 'event.json',

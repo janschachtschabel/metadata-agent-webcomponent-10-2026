@@ -91,6 +91,25 @@ for (const [name, layout] of WITH_UPLOAD) {
       expect(getComputedStyle(button).color).not.toBe('rgb(0, 135, 77)'); // the default layout's "ready" green
     });
 
+    // Final audit 18.10. (L-10): the upload button stayed active during an
+    // extraction and sent the form as it was before the result.
+    it('is unavailable while an extraction runs, and keeps the focus', async () => {
+      const fixture = await render(layout, { state: filledState(), showUploadButton: true, uploading: false });
+      const button = uploadButton(fixture.nativeElement);
+      let uploads = 0;
+      (fixture.componentInstance as any).upload.subscribe(() => uploads++);
+      button.focus();
+
+      fixture.componentRef.setInput('state', { ...filledState(), isExtracting: true });
+      fixture.detectChanges();
+      button.click();
+
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+      expect(button.disabled).toBeFalse();
+      expect(document.activeElement).toBe(button);
+      expect(uploads).toBe(0);
+    });
+
     it('stays disabled while nothing is filled', async () => {
       const fixture = await render(layout, { state: createInitialState(), showUploadButton: true, uploading: false });
 
@@ -154,7 +173,65 @@ describe('default layout group badge', () => {
 
     expect(fixture.nativeElement.querySelector('.schema-badge').textContent.trim()).toBe('Basis');
   });
+
+  // Final audit 18.10. (U-2): the type's badge showed a name derived from the
+  // file name ("Learning Material"), not the type's label in the current language.
+  it('names a content type by its label', async () => {
+    const state = filledState('Lernmaterial');
+    const special = { ...state.coreFields[0], fieldId: 'ccm:x', schemaName: 'Learning Material' } as CanvasFieldState;
+    const fixture = await render(DefaultLayoutComponent, {
+      state: {
+        ...state,
+        specialFields: [special],
+        fieldGroups: [...state.fieldGroups, { id: 'Learning Material-g', label: 'Didaktik', schemaName: 'Learning Material', fields: [special], isCore: false }],
+      },
+    });
+
+    const badges = Array.from(fixture.nativeElement.querySelectorAll('.schema-badge') as NodeListOf<HTMLElement>).map(b => b.textContent!.trim());
+    expect(badges).toEqual(['Basis', 'Lernmaterial']);
+  });
 });
+
+/**
+ * Final audit 18.10. (U-1): the focused start button became natively disabled
+ * when the extraction started, and the focus fell to <body>.
+ */
+for (const [name, layout] of [['default', DefaultLayoutComponent], ['input area', InputAreaComponent]] as [string, Type<unknown>][]) {
+  describe(`${name} extraction button`, () => {
+    const extracting = (on: boolean) => name === 'default'
+      ? { state: { ...filledState(), isExtracting: on } }
+      : { isExtracting: on };
+
+    it('keeps the focus and is announced as unavailable while the extraction runs', async () => {
+      const fixture = await render(layout, { userText: 'Ein Text', ...extracting(false) });
+      const button = fixture.nativeElement.querySelector('.btn-extract') as HTMLButtonElement;
+      let started = 0;
+      (fixture.componentInstance as any).startExtraction.subscribe(() => started++);
+      button.focus();
+
+      for (const [input, value] of Object.entries(extracting(true))) fixture.componentRef.setInput(input, value);
+      fixture.detectChanges();
+      button.click();
+
+      expect(button.disabled).withContext('native disabled drops the focus').toBeFalse();
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+      expect(document.activeElement).toBe(button);
+      expect(started).toBe(0);
+      expect(await seriousA11yViolations(fixture.nativeElement)).toEqual([]);
+    });
+
+    it('Ctrl+Enter starts nothing while the extraction runs', async () => {
+      const fixture = await render(layout, { userText: 'Ein Text', ...extracting(true) });
+      let started = 0;
+      (fixture.componentInstance as any).startExtraction.subscribe(() => started++);
+
+      fixture.nativeElement.querySelector('textarea').dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
+
+      expect(started).toBe(0);
+    });
+  });
+}
 
 /**
  * Audit U-16: Enter in the description box was swallowed - no new line, no

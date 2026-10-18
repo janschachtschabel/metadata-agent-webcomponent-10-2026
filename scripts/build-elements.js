@@ -8,6 +8,7 @@
  * This reproduces exactly the layout that is deployed today.
  *
  * What it does, after `ng build`:
+ *   (the four bundles are written under .tmp names and renamed together at the end)
  *   dist/main.<hash>.js       ->  <target>/dist/main.js       + main.js.gz
  *   dist/polyfills.<hash>.js  ->  <target>/dist/polyfills.js  + .gz
  *   dist/runtime.<hash>.js    ->  <target>/dist/runtime.js    + .gz
@@ -30,10 +31,16 @@
  * `examples/` is deliberately NOT copied. The backend carries sixteen demo
  * pages there against the two in this repo — they are maintained on that side.
  *
- * Target directory: --target=<path>, or WIDGET_TARGET, or the default below,
- * which assumes both repositories are checked out next to each other. The
- * default is the 2.x agent's directory: the version check keeps a 3.x bundle
- * from overwriting it (pass --target=../metadata-agent-3/src/static/widget).
+ * Target directory: --target=<path> (or --target <path>), or WIDGET_TARGET, or
+ * the default below, which assumes both repositories are checked out next to
+ * each other. The default is the 2.x agent's directory: the version check
+ * keeps a 3.x bundle from overwriting it (pass
+ * --target=../metadata-agent-3/src/static/widget). Any other argument stops
+ * the script: a misspelt one would silently deploy to the default.
+ *
+ * If writing the temporary bundles fails (a full disk), they are removed and
+ * nothing is replaced. If replacing fails part-way, the script exits non-zero
+ * and lists which bundles are from the new build and which from the old one.
  */
 
 const fs = require('fs');
@@ -45,11 +52,6 @@ const DEFAULT_TARGET = path.resolve(
   __dirname, '..', '..', 'metadata-agent', 'src', 'static', 'widget'
 );
 
-const fromArgv = process.argv.find((a) => a.startsWith('--target='));
-const TARGET = path.resolve(
-  fromArgv ? fromArgv.slice('--target='.length) : process.env.WIDGET_TARGET || DEFAULT_TARGET
-);
-const FORCE = process.argv.includes('--force');
 
 /** main.7e656acc.js -> main.js, styles.aaf9caa6.css -> styles.css */
 const BUNDLES = [
@@ -63,6 +65,27 @@ function fail(message) {
   console.error(`build-elements: ${message}`);
   process.exit(1);
 }
+
+/** --target=<path>, --target <path> and --force; anything else is an error. */
+function parseArgs(args) {
+  const parsed = { target: null, force: false };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--force') {
+      parsed.force = true;
+    } else if (arg === '--target' || arg.startsWith('--target=')) {
+      parsed.target = arg === '--target' ? args[(i += 1)] : arg.slice('--target='.length);
+      if (!parsed.target) fail('--target needs a path: --target=<path> or --target <path>');
+    } else {
+      fail(`unknown argument "${arg}" — known: --target=<path>, --target <path>, --force`);
+    }
+  }
+  return parsed;
+}
+
+const ARGS = parseArgs(process.argv.slice(2));
+const TARGET = path.resolve(ARGS.target || process.env.WIDGET_TARGET || DEFAULT_TARGET);
+const FORCE = ARGS.force;
 
 if (!fs.existsSync(DIST)) {
   fail(`no dist/ — run "ng build --configuration production" first (${DIST})`);
@@ -173,17 +196,69 @@ for (const file of FONTS) {
   console.log(`  dist/fonts/${file}`);
 }
 
-for (const bundle of sources) {
-  const source = bundle.source;
-  const content = fs.readFileSync(path.join(DIST, source));
-  fs.writeFileSync(path.join(targetDist, bundle.name), content);
-  fs.writeFileSync(
-    path.join(targetDist, `${bundle.name}.gz`),
-    zlib.gzipSync(content, { level: zlib.constants.Z_BEST_COMPRESSION })
-  );
-  written += 2;
-  const kb = (content.length / 1024).toFixed(0);
-  console.log(`  ${source}  ->  dist/${bundle.name}  (${kb} kB, + .gz)`);
+// The bundles go to temporary names first and are renamed only once all of
+// them are written: the directory is served, and a page loading meanwhile got
+// a new main.js with the old runtime.js (they must come from one build).
+const staged = [];
+const relative = (file) => path.relative(TARGET, file).split(path.sep).join('/');
+
+/** Removes the .tmp files that are left; one that cannot go is named. */
+function removeStaged() {
+  for (const final of staged) {
+    try {
+      fs.rmSync(`${final}.tmp`, { force: true });
+    } catch (err) {
+      console.error(`  ${relative(final)}.tmp  could not be removed (${err.code}) — delete it by hand`);
+    }
+  }
+}
+
+try {
+  for (const bundle of sources) {
+    const source = bundle.source;
+    const content = fs.readFileSync(path.join(DIST, source));
+    for (const [name, data] of [
+      [bundle.name, content],
+      [`${bundle.name}.gz`, zlib.gzipSync(content, { level: zlib.constants.Z_BEST_COMPRESSION })],
+    ]) {
+      const final = path.join(targetDist, name);
+      staged.push(final); // before the write: a half-written .tmp is removed as well
+      fs.writeFileSync(`${final}.tmp`, data);
+    }
+    const kb = (content.length / 1024).toFixed(0);
+    console.log(`  ${source}  ->  dist/${bundle.name}  (${kb} kB, + .gz)`);
+  }
+} catch (err) {
+  removeStaged();
+  fail(`writing the new bundles failed (${err.code || err.message}) — nothing replaced, the deployed bundles are unchanged`);
+}
+
+const replaced = [];
+for (const final of staged) {
+  try {
+    try {
+      fs.renameSync(`${final}.tmp`, final);
+    } catch (err) {
+      // Windows refuses to replace a file the server holds open (EPERM/EBUSY):
+      // copy over it instead, as before.
+      fs.copyFileSync(`${final}.tmp`, final);
+      fs.rmSync(`${final}.tmp`, { force: true });
+    }
+  } catch (err) {
+    removeStaged();
+    const rest = staged.slice(replaced.length + 1).map(relative);
+    fail(`replacing the bundles failed at ${relative(final)} (${err.code || err.message}).
+` +
+      `  THE DEPLOYED BUNDLES ARE MIXED — fix the cause and run again.
+` +
+      `  new build:     ${replaced.map(relative).join(', ') || 'none'}
+` +
+      `  possibly half-written: ${relative(final)}
+` +
+      `  old build:     ${rest.join(', ') || 'none'}`);
+  }
+  replaced.push(final);
+  written += 1;
 }
 
 const fontLicences = LICENCES.map(([, to]) => to).filter((to) => path.dirname(to) === targetFonts).map((to) => path.basename(to));

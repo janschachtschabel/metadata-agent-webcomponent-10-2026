@@ -99,7 +99,7 @@ describe('CanvasComponent layout bindings', () => {
       state$,
       bindToInstance: () => undefined,
       relocalizeFields: () => Promise.resolve(),
-      getMetadataForRepository: () => ({}),
+      getMetadataForExport: () => ({}),
       setError: () => undefined,
       updateFieldValue: jasmine.createSpy('updateFieldValue'),
       clearError: jasmine.createSpy('clearError'),
@@ -214,6 +214,88 @@ describe('CanvasComponent layout bindings', () => {
       });
     });
   }
+
+  // Final audit 18.10. (U-1): start and end of an extraction were not
+  // announced; warnings came in a role=status element inserted with its text.
+  describe('announcements', () => {
+    const tick = () => new Promise(resolve => setTimeout(resolve));
+    function region(): HTMLElement {
+      return fixture.nativeElement.querySelector('[aria-live="polite"][role="status"]');
+    }
+    async function next(state: Record<string, unknown>): Promise<string> {
+      state$.next({ screenshotEnabled: false, ...state });
+      fixture.detectChanges();
+      await tick();
+      fixture.detectChanges();
+      return region().textContent!.trim();
+    }
+
+    it('has one live region from the start, empty', async () => {
+      await render('default');
+
+      expect(fixture.nativeElement.querySelectorAll('[aria-live="polite"][role="status"]').length).toBe(1);
+      expect(region().textContent!.trim()).toBe('');
+    });
+
+    it('announces the start and the end of an extraction', async () => {
+      await render('default');
+
+      expect(await next({ isExtracting: true })).toBe('ANNOUNCE.EXTRACTION_STARTED');
+      expect(await next({ isExtracting: false, filledFields: 3 })).toBe('ANNOUNCE.EXTRACTION_DONE');
+    });
+
+    it('announces a warning with the end', async () => {
+      await render('default');
+      await next({ isExtracting: true });
+
+      expect(await next({ isExtracting: false, filledFields: 3, extractionWarning: 'Nur teilweise' }))
+        .toBe('ANNOUNCE.EXTRACTION_DONE Nur teilweise');
+    });
+
+    it('announces nothing new for changes outside an extraction', async () => {
+      await render('default');
+
+      expect(await next({ isExtracting: false, filledFields: 4 })).toBe('');
+    });
+
+    it('ignores the extraction buttons while an extraction runs', async () => {
+      const instance = await render('default');
+      const c: any = component;
+      spyOn(c, 'startExtraction').and.stub();
+      spyOn(c, 'startUrlExtraction').and.stub();
+      spyOn(c, 'startNodeIdExtraction').and.stub();
+      await next({ isExtracting: true });
+
+      instance.startExtraction.emit();
+      instance.startUrlExtraction.emit('https://u');
+      instance.startNodeIdExtraction.emit('n');
+
+      expect(c.startExtraction).not.toHaveBeenCalled();
+      expect(c.startUrlExtraction).not.toHaveBeenCalled();
+      expect(c.startNodeIdExtraction).not.toHaveBeenCalled();
+    });
+  });
+
+  // Final audit 18.10. (P-1): ngDoCheck marked the layout on every tick,
+  // so the OnPush layout tree was checked on every change detection.
+  it('does not check the layout again on a tick that changed nothing', async () => {
+    await render('default');
+    const columns = spyOnProperty(component, 'effectiveColumns', 'get').and.callThrough();
+
+    fixture.detectChanges();
+    fixture.detectChanges();
+
+    expect(columns).not.toHaveBeenCalled();
+  });
+
+  it('checks the layout when an input of the element changes', async () => {
+    const instance = await render('default');
+
+    fixture.componentRef.setInput('columns', 3);
+    fixture.detectChanges();
+
+    expect(instance.columns).toBe(3);
+  });
 
   it('swaps the layout when the layout input changes', async () => {
     await render('default');

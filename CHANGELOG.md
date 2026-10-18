@@ -2,8 +2,140 @@
 
 ## 3.0.0 — 2026-10-17 — Neuer Aufbau, Korrekturen aus dem Audit
 
-Gehört zum Agenten 3.0.0. Oberfläche und Texte bleiben gleich; das Bundle
-meldet 3.0.0 und lädt seine Texte als `/widget/i18n/<sprache>.json?v=3.0.0`.
+Gehört zum Agenten 3.0.0. Attribute, Ereignisse und Ansichten sind dieselben
+wie in 2.1.1. Im Verhalten weicht 3.0.0 an einigen Stellen bewusst ab; sie sind
+unten als **Abweichung von 2.1.1** markiert (u. a. Import ohne `metadataset`,
+Inhalt von Ereignissen und Upload). Das Bundle meldet 3.0.0 und lädt seine
+Texte als `/widget/i18n/<sprache>.json?v=3.0.0`.
+
+Sichtbar anders als in 2.1.1: die Basisfelder heißen „Basis“ statt „Core“, die
+zusammengefasste Gruppe bei `flat-groups` „Alle Felder“; KI-Werte tragen bei
+`highlight-ai` ein Symbol; ungültige Felder haben einen roten Rahmen;
+Meldungen und Rückfragen erscheinen als Hinweisleiste im Widget statt als
+Browser-Dialog; Fehlermeldungen für Datum und Uhrzeit nennen das Format.
+
+Für Einbettende:
+
+- **Widget 3.x braucht Agent 3.x.** Die Texte kommen vom Agenten; ein 3.x-Widget
+  an einem 2.x-Agenten (oder umgekehrt) zeigt rohe Schlüssel wie
+  `ANNOUNCE.EXTRACTION_STARTED` statt Text. Die Texte von 3.x enthalten weiter
+  die Schlüssel, die ein 2.1.1-Widget noch nutzt (z. B. `FIELD.BOOLEAN.EMPTY`).
+- **Keine globale Klasse `.visually-hidden` mehr:** das Widget legt sie nicht
+  mehr in die Host-Seite. Seiten, die sie für eigene Elemente genutzt haben,
+  müssen sie selbst definieren.
+- **Version abfragen:** `customElements.get('metadata-agent-canvas').widgetVersion`
+  (ein `element.version` gibt es nicht).
+- Die Sprache merkt sich das Widget unter `metadata-agent-canvas.language`
+  (bisher `app_language`, wird einmal übernommen und nicht gelöscht).
+
+Korrekturen aus dem finalen Audit vom 18.10.
+(`metadata-agent-3/docs/audits/2026-10-18-audit-3.0.0-final.md`):
+
+- **Import beim Seitenstart wie in 2.1.1 (F1):** Ein `metadata-input`, das die
+  Seite setzt, während das Widget noch das Basisschema lädt, ging verloren,
+  wenn zugleich `content-type` gesetzt war (`review-demo.html`: 0 statt 15
+  Felder). Was die Seite setzt, wird jetzt nacheinander angewandt, in der
+  Reihenfolge, in der es beim Widget ankommt; ein `content-type`, den der
+  Import schon mitbringt, wird nicht erneut angewandt. Nach dem Start wirkt
+  `contentType` sofort, `metadataInput` erst mit der nächsten
+  Änderungserkennung: `el.metadataInput = …; el.contentType = …` im selben
+  Skriptlauf kommt als Typ, dann Import an. Ein Typ hält die Reihe nur auf,
+  bis er mit seinen Feldern im Formular steht – nicht für die Neuextraktion,
+  die er aus dem Quelltext eines Imports auslöst. Ein `metadata-input`, das
+  währenddessen kommt (der Prüftisch geht zum nächsten Node), wird sofort
+  angewandt und verwirft deren Ergebnis; vorher wartete es bis zu ~110 s und
+  das Ergebnis des vorigen Nodes erschien kurz im Formular.
+- **Import ohne `metadataset` behält den Typ der Seite (F2):**
+  `el.metadataInput = {...}; el.contentType = 'event.json'` ergibt wieder das
+  Veranstaltungsformular mit allen Werten – in beiden Reihenfolgen. Ein Typ
+  der vorigen Seite oder Extraktion wird verworfen (keine fremden Felder),
+  ebenso der Typ der Seite, sobald der Redakteur selbst einen Typ gewählt hat:
+  ein folgender Import ohne `metadataset` hat dann keinen Typ (vorher wurde
+  das Formular wieder als Typ der Seite aufgebaut). **Abweichung von 2.1.1:**
+  dort behielt ein Import ohne `metadataset` den gerade gewählten Typ, auch
+  den der vorigen Seite.
+- **Upload folgt dem Formular (W-L1):** Der Upload enthält nur noch Felder des
+  Basisschemas und des gewählten Typs, auch die ohne Formularfeld
+  (`ask_user: false`, z. B. `schema:geo`, `ccm:oeh_extendedType`) – keine
+  Felder eines vorher gewählten Typs, keine Unterfeld-Schlüssel wie
+  `schema:location.address.streetAddress`, keine Schlüssel eines Imports, für
+  die das Formular kein Feld hat (alles landete in `ccm:oeh_extendedData`).
+  `metadataChange`, `metadataSubmit` und der JSON-Download enthalten ebenfalls
+  keine Felder eines vorher gewählten Typs und keine Unterfeld-Schlüssel,
+  geben aber wie 2.1.1 die Schlüssel des importierten Datensatzes zurück, für
+  die das Formular kein Feld hat: unbekannte Schlüssel und die Typwerte eines
+  Imports ohne `metadataset` und ohne Typ der Seite (bis zum nächsten Import,
+  zur nächsten Extraktion oder zum Zurücksetzen). **Abweichung von 2.1.1:**
+  dort enthielten Ereignisse und Upload jeden Schlüssel der internen Liste,
+  auch veraltete eines anderen Typs. Entschieden so, weil Einbettende einen
+  Datensatz durch das Widget reichen können, ohne fremde Schlüssel ins
+  Repository zu schreiben. Die Felder ohne Formularfeld merkt sich jedes
+  Widget selbst: ein zweites Widget auf der Seite (`dual-instance-test.html`)
+  oder ein neu eingehängtes leerte den gemeinsamen Schemacache, und der
+  nächste Upload des ersten verlor z. B. die Geokoordinaten. Setzt ein Widget
+  denselben Kontext erneut, bleibt der Cache.
+- **Durchtabben verändert Datum mit Uhrzeit nicht mehr:** Ein Wert des
+  Agenten mit Sekunden oder Zeitzone (`…T10:00:00`, `…Z`, `…+02:00`) wurde
+  beim Verlassen als `…T10:00` gemeldet – Zeitzone weg, KI-Wert als
+  Nutzereingabe markiert. Unverändert angezeigt heißt jetzt: keine Meldung.
+- **`build-elements.js`:** Scheitert das Schreiben der temporären Bundles
+  (volle Platte), werden alle `.tmp`-Dateien entfernt und nichts ersetzt.
+  Scheitert das Ersetzen mittendrin, endet das Skript mit Fehler und nennt,
+  welche Bundles vom neuen und welche vom alten Build sind. `--target <pfad>`
+  (mit Leerzeichen) wirkt wie `--target=<pfad>`; ein unbekanntes Argument
+  bricht ab, statt still in das Standardziel (den 2.x-Agenten) zu schreiben.
+- **Datum und Uhrzeit werden geprüft (W-L2, W-L3, auch in 2.1.1):** „31.02.2026
+  25:99“, „morgen“, „1“ oder „Sommer 2026“ werden abgelehnt und gemeldet statt
+  umgerechnet oder still verworfen. Angenommen werden TT.MM.JJJJ, TT/MM/JJJJ und
+  ISO, jeweils nur mit existierendem Tag; kein Tagesversatz mehr durch
+  Zeitzonen.
+- **Zahlen (L-9):** „12abc“ ist keine Zahl mehr, „1.234,5“ wird 1234,5, eine
+  Ganzzahl verliert keine Nachkommastellen mehr stillschweigend.
+- **Mehrwertige Datums- und Adressfelder (W-L4):** z. B. `schema:url` einer
+  Person zeigt die Werte als Chips (auch nur lesend), neue Einträge werden als
+  Adresse bzw. Datum geprüft; ein mehrwertiges Datumsfeld wird beim Verlassen
+  nicht mehr geleert.
+- **Geleerte Werte bleiben leer (W-L5)** nach einem Typwechsel hin und zurück.
+- **`content-type="core.json"` (W-L6)** zeigt die Basisfelder einmal statt
+  doppelt und setzt keinen Inhaltstyp.
+- **Leere Objektfelder (L-8)** (`[]`, `{}`) zählen nicht mehr als ausgefüllt.
+- **Schemata (L-11):** ein Typschema wird bei gleichzeitigen Anfragen nur einmal
+  geladen, eine Antwort aus einem vorherigen Kontext nicht übernommen, ein
+  Feld im Schema seines Typs nachgeschlagen.
+- **Barrierefreiheit (U-1, T-2):** Start und Ende einer Extraktion und deren
+  Warnungen werden über eine Live-Region angesagt; Extraktions- und
+  Upload-Button bleiben während der Extraktion fokussierbar (`aria-disabled`).
+  Der Uhr-Button hat einen Namen, das versteckte Eingabefeld der Uhr ist für
+  Screenreader verborgen.
+- **Upload während einer Extraktion gesperrt (L-10)** – er sendete den Stand
+  vor dem Ergebnis.
+- **Upload-Fehler nennen den Node:** Antwortet der Agent auf einen
+  fehlgeschlagenen Upload mit `node` oder `discarded_node` (422/502), sagt die
+  Meldung, ob der Node noch existiert oder entfernt wurde.
+- **Texte und Gestaltung (U-2–U-5):** kein englisches „Sub-field of …“ mehr als
+  Platzhalter; das Typ-Abzeichen im Standardlayout zeigt den übersetzten
+  Typnamen statt eines aus dem Dateinamen gebildeten („Learning Material“);
+  Farben über die vorhandenen Variablen; Einblend-Animationen entfallen bei
+  `prefers-reduced-motion`; tote Statusanzeigen entfernt.
+- **Leistung (P-1):** Das Layout wird nicht mehr bei jedem Änderungszyklus
+  geprüft, sondern nur, wenn sich ein gebundener Wert ändert.
+- **Sicherheit (S-1, S-2):** Die Standalone-Seite liest `?apiUrl` und
+  `?dataUrl` nur noch auf `localhost`; Kontext, Version und Schemadatei werden
+  im Pfad escaped.
+- **Aufräumen (M-1, M-2):** ungenutzte Methoden (u. a. `validate`,
+  `exportMarkdown`, `extractField`, `healthCheck` im API-Dienst) und doppelte
+  Logik entfernt, Verhalten unverändert.
+- **Doku (D-1):** `docs/URL-PARAMETERS.md` aus dem Code neu geschrieben;
+  README-Beispiele korrigiert (`source.json` ist kein Inhaltstyp).
+- **Build und Tests:** Größenbudget 1,6 MB Warnung / 2 MB Fehler (gemessen
+  1,47 MB); `build-elements.js` schreibt die Bundles unter temporären Namen und
+  benennt sie erst am Ende um; CI-Image auf `node:22.20.0-bookworm` festgelegt;
+  `@types/node` 22; ngx-translate ohne veraltete Aufrufe; Tests ohne echte
+  Wartezeiten, Barrierefreiheitsprüfung mit allen Feldarten.
+- **Offen (Schulden):** `@angular/animations` bleibt (ngx-mat-timepicker nutzt
+  es); der Wechsel auf `@angular/build:application` bleibt aus (Karma,
+  `runtime.js` und `build-elements.js` müssten mitziehen); Chromium im CI ist
+  nicht auf eine Version festgelegt.
 
 Korrekturen aus dem Audit vom 18.10. (`metadata-agent/docs/audits/2026-10-18-audit-3.0.0-nachkorrektur.md`):
 

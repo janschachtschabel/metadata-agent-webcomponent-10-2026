@@ -3,6 +3,9 @@ import { HttpClient } from '@angular/common/http';
 import { CanvasComponent } from './components/canvas/canvas.component';
 import { WidgetDebug } from './core/debug';
 
+/** Hosts where ?apiUrl and ?dataUrl are taken from the page URL (local development). */
+const DEVELOPMENT_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
 /**
  * Root App Component
  * 
@@ -21,7 +24,8 @@ import { WidgetDebug } from './core/debug';
  *   ?showLanguageSwitcher=false - Hide language switcher
  *   ?showResetButton=false - Hide reset button
  *   ?showContentTypeOnly=true - Only show content type
- *   ?dataUrl=assets/example-event.json - Load JSON data from URL
+ *   ?dataUrl=assets/example-event.json - Load JSON data from URL (localhost only)
+ *   ?apiUrl=http://localhost:8000      - Agent address (localhost only)
  * 
  * Layout values: default, plugin, dialog, detail, clean, prueftisch, prueftisch-org
  * (alias: metadatenpruefdialog → clean)
@@ -91,11 +95,15 @@ export class AppComponent implements OnInit {
     this.parseQueryParams();
   }
   
-  private parseQueryParams(): void {
-    const params = new URLSearchParams(window.location.search);
+  private parseQueryParams(search = window.location.search, hostname = window.location.hostname): void {
+    const params = new URLSearchParams(search);
+    // Which agent to talk to and which data to load come from the page URL only
+    // in development (S-1): on a deployed page a link could send every upload
+    // and record to another server.
+    const development = DEVELOPMENT_HOSTS.includes(hostname);
     
     // API URL
-    const apiUrlParam = params.get('apiUrl');
+    const apiUrlParam = development ? params.get('apiUrl') : null;
     if (apiUrlParam) this.apiUrl = apiUrlParam;
     
     // Schema context
@@ -171,7 +179,7 @@ export class AppComponent implements OnInit {
     this.showContentTypeOnly = boolParam('showContentTypeOnly');
     
     // Load JSON data from URL
-    const dataUrl = params.get('dataUrl');
+    const dataUrl = development ? params.get('dataUrl') : null;
     if (dataUrl) {
       this.http.get<Record<string, unknown>>(dataUrl).subscribe({
         next: (data) => {

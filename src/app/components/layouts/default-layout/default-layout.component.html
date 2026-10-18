@@ -80,7 +80,8 @@
         mat-flat-button
         class="btn-extract"
         [disabled]="!userText.trim() || (state?.isExtracting ?? false)"
-        (click)="startExtraction.emit()">
+        [disabledInteractive]="(state?.isExtracting ?? false)"
+        (click)="state?.isExtracting || startExtraction.emit()">
         <mat-icon *ngIf="!state?.isExtracting">play_arrow</mat-icon>
         <mat-icon *ngIf="state?.isExtracting">hourglass_empty</mat-icon>
         <span *ngIf="!state?.isExtracting">{{ 'INPUT.START_EXTRACTION' | translate }}</span>
@@ -93,7 +94,8 @@
         mat-flat-button
         class="btn-extract"
         [disabled]="!sourceUrl.trim() || (state?.isExtracting ?? false)"
-        (click)="startUrlExtraction.emit(sourceUrl)">
+        [disabledInteractive]="(state?.isExtracting ?? false)"
+        (click)="state?.isExtracting || startUrlExtraction.emit(sourceUrl)">
         <mat-icon *ngIf="!state?.isExtracting">language</mat-icon>
         <mat-icon *ngIf="state?.isExtracting">hourglass_empty</mat-icon>
         <span *ngIf="!state?.isExtracting">{{ 'INPUT.EXTRACT_FROM_URL' | translate }}</span>
@@ -106,7 +108,8 @@
         mat-flat-button
         class="btn-extract"
         [disabled]="!nodeId.trim() || (state?.isExtracting ?? false)"
-        (click)="startNodeIdExtraction.emit(nodeId)">
+        [disabledInteractive]="(state?.isExtracting ?? false)"
+        (click)="state?.isExtracting || startNodeIdExtraction.emit(nodeId)">
         <mat-icon *ngIf="!state?.isExtracting">cloud_download</mat-icon>
         <mat-icon *ngIf="state?.isExtracting">hourglass_empty</mat-icon>
         <span *ngIf="!state?.isExtracting">{{ 'INPUT.EXTRACT_FROM_NODE' | translate }}</span>
@@ -146,7 +149,7 @@
   </div>
 
   <!-- ===== EXTRACTION WARNING ===== -->
-  <div class="extraction-warning" *ngIf="state?.extractionWarning" role="status">
+  <div class="extraction-warning" *ngIf="state?.extractionWarning">
     <mat-icon>warning</mat-icon>
     <span>{{ state!.extractionWarning }}</span>
     <button mat-icon-button (click)="onDismissWarning()" [attr.aria-label]="'COMMON.CLOSE' | translate">
@@ -233,7 +236,7 @@
             </h3>
           </div>
           <div class="group-info" *ngIf="showFieldActions">
-            <span class="schema-badge">{{ !group.schemaName || group.schemaName === 'Core' ? ('LAYOUT.CORE_FIELDS' | translate) : group.schemaName }}</span>
+            <span class="schema-badge">{{ !group.schemaName || group.schemaName === 'Core' ? ('LAYOUT.CORE_FIELDS' | translate) : (state?.contentTypeLabel || group.schemaName) }}</span>
             <span class="count">{{ _filledCountMap.get(group.id) ?? 0 }}/{{ _flatCountMap.get(group.id) ?? 0 }}</span>
             <span class="count-label">{{ 'PROGRESS.FIELDS_RECOGNIZED' | translate }}</span>
           </div>
@@ -314,9 +317,9 @@
         mat-icon-button
         *ngIf="showUploadButton"
         class="upload-btn"
-        [disabled]="!state?.filledFields || uploading"
-        [disabledInteractive]="uploading"
-        (click)="upload.emit()"
+        [disabled]="!state?.filledFields || uploading || (state?.isExtracting ?? false)"
+        [disabledInteractive]="uploading || (state?.isExtracting ?? false)"
+        (click)="state?.isExtracting || upload.emit()"
         [matTooltip]="'CONTROLS.UPLOAD' | translate" [attr.aria-label]="'CONTROLS.UPLOAD' | translate">
         <mat-icon>cloud_upload</mat-icon>
       </button>

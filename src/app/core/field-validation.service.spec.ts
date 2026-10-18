@@ -52,6 +52,30 @@ describe('FieldValidationService', () => {
       expect(check('viele', { datatype: 'number' }).valid).toBeFalse();
     });
 
+    // Final audit 18.10. (L-9): parseFloat/parseInt read the start of the text.
+    for (const text of ['12abc', '1.2.3', '12,5,1', '1.23,4']) {
+      it(`reject "${text}" as a number`, () => {
+        expect(check(text, { datatype: 'number' }).valid).toBeFalse();
+      });
+    }
+
+    it('read German thousands separators and decimal commas', () => {
+      expect(check('1.234,5', { datatype: 'number' }).normalizedValue).toBe(1234.5);
+      expect(check('1.234.567', { datatype: 'number' }).normalizedValue).toBe(1234567);
+      expect(check('-0,75', { datatype: 'number' }).normalizedValue).toBe(-0.75);
+    });
+
+    it('read a point as decimal point when there is no comma (what a number input gives)', () => {
+      expect(check('1.234', { datatype: 'number' }).normalizedValue).toBe(1.234);
+      expect(check('1234.5', { datatype: 'number' }).normalizedValue).toBe(1234.5);
+    });
+
+    it('do not cut a fraction off an integer', () => {
+      expect(check('12.7', { datatype: 'integer' }).valid).toBeFalse();
+      expect(check('12', { datatype: 'integer' }).normalizedValue).toBe(12);
+      expect(check('1.200.000', { datatype: 'integer' }).normalizedValue).toBe(1200000);
+    });
+
     it('respect min and max', () => {
       expect(check(5, { datatype: 'number', validation: { min: 10 } }).valid).toBeFalse();
       expect(check(50, { datatype: 'number', validation: { max: 10 } }).valid).toBeFalse();
@@ -74,6 +98,30 @@ describe('FieldValidationService', () => {
 
     it('reject what is no date', () => {
       expect(check('irgendwann', { datatype: 'date' }).valid).toBeFalse();
+    });
+
+    // Final audit 18.10. (W-L3): Date rolled over and Date.parse guessed.
+    for (const text of ['2026-02-31', '31.02.2026', '1', 'Sommer 2026', '2026', '13/13/2026']) {
+      it(`reject "${text}" as a date`, () => {
+        expect(check(text, { datatype: 'date' }).valid).toBeFalse();
+      });
+    }
+
+    it('accept a date with slashes, day first', () => {
+      expect(check('03/05/2026', { datatype: 'date' }).normalizedValue).toBe('2026-05-03');
+    });
+
+    for (const text of ['2026-02-31T10:00', 'Sommer 2026', '1', '2026-05-03T25:00']) {
+      it(`reject "${text}" as a date-time`, () => {
+        expect(check(text, { datatype: 'datetime' }).valid).toBeFalse();
+      });
+    }
+
+    it('keep ISO date-times as they are and read German ones', () => {
+      expect(check('2026-05-03T14:30', { datatype: 'datetime' }).normalizedValue).toBe('2026-05-03T14:30');
+      expect(check('2026-05-03T14:30:00+02:00', { datatype: 'datetime' }).normalizedValue).toBe('2026-05-03T14:30:00+02:00');
+      expect(check('2026-05-03', { datatype: 'datetime' }).normalizedValue).toBe('2026-05-03T00:00:00');
+      expect(check('03.05.2026 14:30', { datatype: 'datetime' }).normalizedValue).toBe('2026-05-03T14:30');
     });
 
     it('accept times', () => {

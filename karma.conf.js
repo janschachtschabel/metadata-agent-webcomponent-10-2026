@@ -28,12 +28,12 @@ module.exports = function (config) {
       subdir: '.',
       reporters: [{ type: 'text-summary' }, { type: 'cobertura' }],
       // Floor just below the coverage measured on 2026-10-18 after the fixes
-      // from the release review (statements 66.90 %, branches 50.85 %, functions
-      // 61.95 %, lines 69.52 %; audit T-02/T-07): a change that drops tests fails
-      // `ng test --code-coverage` instead of passing unnoticed. Raise it as
-      // coverage grows.
+      // from the final audit (statements 75.44 %, branches 60.97 %, functions
+      // 72.83 %, lines 77.66 %; before: 66.90 / 50.85 / 61.95 / 69.52): a change
+      // that drops tests fails `ng test --code-coverage` instead of passing
+      // unnoticed. Raise it as coverage grows.
       check: {
-        global: { statements: 66, branches: 50, functions: 61, lines: 69 },
+        global: { statements: 75, branches: 60, functions: 72, lines: 77 },
       },
     },
     reporters: ['progress', 'kjhtml'],

@@ -102,6 +102,9 @@ export class SchemaService {
     // Use provided values or defaults from environment
     const contextName = name || (environment as any).defaultContext || 'default';
     const contextVersion = version || (environment as any).defaultVersion || 'latest';
+    // Every widget on the page sets its context in ngOnInit; the same one again
+    // keeps the schemas the other widgets still build and export from.
+    if (this.currentContext?.key === contextName && this.currentContext?.version === contextVersion) return;
 
     this.currentContext = {
       key: contextName,
@@ -115,6 +118,7 @@ export class SchemaService {
     this.coreLoad = null;
     this.contentTypeSchemas.clear();
     this.contentTypeGroups.clear();
+    this.contentTypeLoads.clear();
 
     this.config.info(`Context set: ${contextName} v${contextVersion}`);
   }
@@ -168,17 +172,38 @@ export class SchemaService {
     if (this.contentTypeSchemas.has(schemaFile)) {
       return this.contentTypeSchemas.get(schemaFile)!;
     }
+    // One request per schema while it is out (L-11), like the core schema.
+    let load = this.contentTypeLoads.get(schemaFile);
+    if (!load) {
+      load = this.requestContentTypeSchema(schemaFile);
+      this.contentTypeLoads.set(schemaFile, load);
+      const settled = () => {
+        if (this.contentTypeLoads.get(schemaFile) === load) this.contentTypeLoads.delete(schemaFile);
+      };
+      load.then(settled, settled);
+    }
+    return load;
+  }
 
+  /** Content-type schema requests that are out, by file; a context switch forgets them. */
+  private contentTypeLoads = new Map<string, Promise<FieldDefinition[]>>();
+
+  private async requestContentTypeSchema(schemaFile: string): Promise<FieldDefinition[]> {
+    const current = this.currentContext;
     try {
-      const context = this.currentContext?.key || 'default';
-      const version = this.currentContext?.version || 'latest';
+      const context = current?.key || 'default';
+      const version = current?.version || 'latest';
       
       const response = await this.api.getSchema(context, version, schemaFile);
       const fields = response.fields as FieldDefinition[];
-      this.contentTypeSchemas.set(schemaFile, fields);
-      // Also cache groups from the same response to avoid a duplicate HTTP call from getGroups()
-      if ((response as any).groups) {
-        this.contentTypeGroups.set(schemaFile, (response as any).groups);
+      // Cached only for the context it was asked in (L-11): after a switch it
+      // would be served as the new context's schema.
+      if (this.currentContext === current) {
+        this.contentTypeSchemas.set(schemaFile, fields);
+        // Also cache groups from the same response to avoid a duplicate HTTP call from getGroups()
+        if ((response as any).groups) {
+          this.contentTypeGroups.set(schemaFile, (response as any).groups);
+        }
       }
       this.config.debug(`Content type schema loaded from API: ${schemaFile}`);
       return fields;
@@ -204,48 +229,11 @@ export class SchemaService {
     const lang = this.i18n.currentLang;
     
     return field.system.vocabulary.concepts.map(concept => ({
-      label: this.localize(concept.label, lang),
+      label: this.localizeString(concept.label, lang),
       schemaFile: concept.schema_file || '',
       uri: concept.uri || undefined,
       icon: concept.icon || 'category'
     }));
-  }
-
-  async getContentTypeBySchemaFile(schemaFile: string): Promise<ContentType | undefined> {
-    // Ensure core schema is loaded
-    await this.loadCoreSchema();
-    
-    if (!this.coreSchema) return undefined;
-    
-    const field = this.coreSchema.fields.find(f => f.id === 'ccm:oeh_extendedType');
-    const concept = field?.system?.vocabulary?.concepts?.find(c => c.schema_file === schemaFile);
-    
-    if (!concept) return undefined;
-    
-    return {
-      label: this.localize(concept.label, this.i18n.currentLang),
-      schemaFile: concept.schema_file || '',
-      uri: concept.uri || undefined,
-      icon: concept.icon || 'category'
-    };
-  }
-
-  async getContentTypeByUri(uri: string): Promise<ContentType | undefined> {
-    await this.loadCoreSchema();
-    
-    if (!this.coreSchema) return undefined;
-    
-    const field = this.coreSchema.fields.find(f => f.id === 'ccm:oeh_extendedType');
-    const concept = field?.system?.vocabulary?.concepts?.find(c => c.uri === uri);
-    
-    if (!concept) return undefined;
-    
-    return {
-      label: this.localize(concept.label, this.i18n.currentLang),
-      schemaFile: concept.schema_file || '',
-      uri: concept.uri || undefined,
-      icon: concept.icon || 'category'
-    };
   }
 
   /**
@@ -265,28 +253,6 @@ export class SchemaService {
 
   // ===== Localization =====
 
-  localize(text: I18nString | string | undefined, lang?: string): string {
-    if (!text) return '';
-    if (typeof text === 'string') return text;
-    
-    const language = lang || this.i18n.currentLang;
-    return text[language] || text['de'] || text['en'] || Object.values(text)[0] || '';
-  }
-
-  localizeField(field: FieldDefinition, lang?: string): {
-    label: string;
-    description: string;
-    examples: string[];
-  } {
-    const language = lang || this.i18n.currentLang;
-    
-    return {
-      label: this.localize(field.label, language),
-      description: this.localize(field.description, language),
-      examples: this.localizeArray(field.examples, language)
-    };
-  }
-
   localizeVocabulary(vocabulary: any, lang?: string): VocabularyConcept[] {
     if (!vocabulary?.concepts) return [];
     
@@ -294,9 +260,9 @@ export class SchemaService {
     
     return vocabulary.concepts.map((concept: any) => ({
       ...concept,
-      label: this.localize(concept.label, language),
+      label: this.localizeString(concept.label, language),
       description: concept.description 
-        ? this.localize(concept.description, language)
+        ? this.localizeString(concept.description, language)
         : undefined
     }));
   }
@@ -304,15 +270,23 @@ export class SchemaService {
   private localizeArray(arr: any, lang: string): string[] {
     if (!arr) return [];
     if (!Array.isArray(arr)) return [];
-    return arr.map(item => this.localize(item, lang));
+    return arr.map(item => this.localizeString(item, lang));
   }
 
   // ===== Field Helpers =====
 
-  getFieldById(fieldId: string): FieldDefinition | undefined {
+  /**
+   * The definition of a field: from the core schema, then from `schemaFile`
+   * (the field's own type - two types may define one id differently, L-11),
+   * then from any loaded type.
+   */
+  getFieldById(fieldId: string, schemaFile?: string): FieldDefinition | undefined {
     // First check core schema
     const coreField = this.coreSchema?.fields.find(f => f.id === fieldId);
     if (coreField) return coreField;
+
+    const own = schemaFile ? this.contentTypeSchemas.get(schemaFile)?.find(f => f.id === fieldId) : undefined;
+    if (own) return own;
     
     // Then check all loaded content type schemas
     for (const fields of this.contentTypeSchemas.values()) {
@@ -321,10 +295,6 @@ export class SchemaService {
     }
     
     return undefined;
-  }
-
-  getCoreFields(): FieldDefinition[] {
-    return this.coreSchema?.fields || [];
   }
 
   // ===== Extended Methods for CanvasService =====
@@ -358,17 +328,6 @@ export class SchemaService {
     }
   }
 
-  async getOutputTemplate(schemaFile: string): Promise<Record<string, any> | null> {
-    try {
-      const context = this.currentContext?.key || 'default';
-      const version = this.currentContext?.version || 'latest';
-      const response = await this.api.getSchema(context, version, schemaFile);
-      return (response as any).output_template || {};
-    } catch {
-      return {};
-    }
-  }
-
   getActiveLanguage(): 'de' | 'en' {
     return (this.i18n.currentLang === 'en' ? 'en' : 'de') as 'de' | 'en';
   }
@@ -398,7 +357,7 @@ export class SchemaService {
     }));
   }
 
-  // Extended localizeField for CanvasService (with vocabulary and prompt)
+  // Labels, description, examples, vocabulary and prompt of a field in `lang`
   localizeFieldFull(field: any, lang?: string): any {
     const language = lang || this.i18n.currentLang;
     

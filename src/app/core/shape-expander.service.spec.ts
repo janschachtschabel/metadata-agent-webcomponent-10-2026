@@ -121,4 +121,16 @@ describe('ShapeExpanderService', () => {
     );
     expect(subFields).toEqual([]);
   });
+
+  // Final audit 18.10. (U-2): a subfield of an older shape definition carried
+  // the English "Sub-field of …" as description, shown as its placeholder.
+  it('gives subfields of an older shape no English placeholder text', () => {
+    const subFields = service.expandFieldWithShape(
+      field({ fieldId: 'schema:organizer', label: 'Veranstalter', shape: { name: 'string', url: 'string' } }),
+      [{ name: 'Theater' }], { id: 'schema:organizer', system: {} },
+    );
+
+    expect(subFields.length).toBe(2);
+    expect(subFields.map(f => f.description)).toEqual(['', '']);
+  });
 });

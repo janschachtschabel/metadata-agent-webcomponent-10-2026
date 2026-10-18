@@ -100,6 +100,8 @@ export interface CanvasFieldState {
   groupIcon?: string;
   groupOrder: number;
   schemaName: string;
+  /** The schema the field is defined in ('core.json' or the type's file). */
+  schemaFile?: string;
   aiFillable: boolean;
   repoField: boolean;
   status: FieldStatus;

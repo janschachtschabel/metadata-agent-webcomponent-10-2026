@@ -31,4 +31,13 @@ describe('translation files', () => {
 
     expect(named.filter(key => !de.includes(key))).toEqual([]);
   });
+
+  // Final audit 18.10.: the agent serves these files to 2.1.1 widgets as well
+  // (mixed deployments), and the 2.1.1 bundle still uses this key.
+  it('keep the keys a 2.1.1 widget still uses', async () => {
+    const [de, en] = await Promise.all([load('de'), load('en')]);
+
+    expect((de['FIELD'] as any)?.BOOLEAN?.EMPTY).toBe('Bitte auswählen');
+    expect((en['FIELD'] as any)?.BOOLEAN?.EMPTY).toBe('Please select');
+  });
 });

@@ -239,7 +239,9 @@ export class ShapeExpanderService {
       fieldId: fullPath,
       uri: `${parentField.uri}#${propertyPath}`,
       label: label,
-      description: `Sub-field of ${parentField.label}`,
+      // No description: it is the input's placeholder, and the label already
+      // names the parent ("Veranstalter (Name)"); the English text stood there (U-2).
+      description: '',
       repoField: parentField.repoField,
       group: parentField.group,
       groupLabel: parentField.groupLabel,

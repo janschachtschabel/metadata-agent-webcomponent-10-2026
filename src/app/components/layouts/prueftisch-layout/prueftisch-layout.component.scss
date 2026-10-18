@@ -24,7 +24,7 @@
   color: #721c24;
   font-size: 13px;
   
-  mat-icon { color: #ba1a1a; flex-shrink: 0; }
+  mat-icon { color: var(--md-error, #ba1a1a); flex-shrink: 0; }
   span { flex: 1; line-height: 1.4; }
 }
 

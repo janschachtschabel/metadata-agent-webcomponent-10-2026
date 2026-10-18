@@ -10,15 +10,6 @@
   margin-bottom: 16px;
   background: transparent;
 
-  &.status-extracting {
-    animation: pulse 1.6s infinite;
-
-    // An endless pulse is what prefers-reduced-motion asks to avoid (U-16).
-    @media (prefers-reduced-motion: reduce) {
-      animation: none;
-    }
-  }
-
   // AI origin as an icon plus screen-reader text, not by colour alone (U-16)
   .ai-origin {
     display: inline-flex;
@@ -46,7 +37,7 @@
   }
 
   .required-marker {
-    color: #ba1a1a;
+    color: var(--md-error, #ba1a1a);
     margin-left: 2px;
   }
 
@@ -81,7 +72,7 @@
     &.mat-focused ::ng-deep .mat-mdc-notched-outline .mat-mdc-notched-outline-trailing,
     &.mat-focused ::ng-deep .mat-mdc-notched-outline .mat-mdc-notched-outline-leading,
     &.mat-focused ::ng-deep .mat-mdc-notched-outline .mat-mdc-notched-outline-notch {
-      border-color: #003B7C !important;
+      border-color: var(--mat-app-primary, #003B7C) !important;
       border-width: 2px !important;
     }
 
@@ -190,16 +181,6 @@
   }
 }
 
-// Status hints below field
-.field-status {
-  font-size: 12px;
-  color: #5f6d7e;
-
-  &.extracting {
-    color: #006693;
-  }
-}
-
 // Support text below field (outside mat-form-field)
 .support-text {
   font-size: 12px;
@@ -208,7 +189,7 @@
 
   &.required,
   &.error {
-    color: #ba1a1a;
+    color: var(--md-error, #ba1a1a);
     font-weight: 500;
   }
 
@@ -305,14 +286,3 @@
     display: none !important;
   }
 }
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-

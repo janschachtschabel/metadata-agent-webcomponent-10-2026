@@ -46,7 +46,7 @@
 
     <!-- Date field with calendar picker -->
     <input
-      *ngIf="field.datatype === 'date'"
+      *ngIf="field.datatype === 'date' && !_chipInput"
       matInput
       [required]="field.isRequired"
       [errorStateMatcher]="errorMatcher"
@@ -56,12 +56,12 @@
       (dateChange)="onDateChange($event)"
       [placeholder]="field.description || placeholderDate"
       [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
-    <mat-datepicker-toggle *ngIf="field.datatype === 'date'" matIconSuffix [for]="datePicker"></mat-datepicker-toggle>
+    <mat-datepicker-toggle *ngIf="field.datatype === 'date' && !_chipInput" matIconSuffix [for]="datePicker"></mat-datepicker-toggle>
     <mat-datepicker #datePicker></mat-datepicker>
 
     <!-- DateTime field: editable text input + date picker + time picker -->
     <input
-      *ngIf="field.datatype === 'datetime'"
+      *ngIf="field.datatype === 'datetime' && !_chipInput"
       matInput
       [required]="field.isRequired"
       [errorStateMatcher]="errorMatcher"
@@ -73,12 +73,14 @@
       [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
     <!-- Hidden anchors for the pickers; their toggles take the disabled state from them -->
     <!-- Hidden input for date picker binding -->
-    <input *ngIf="field.datatype === 'datetime'" [matDatepicker]="dateTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" (dateChange)="onDateTimePickerSelect($event)" style="display:none"/>
-    <mat-datepicker-toggle *ngIf="field.datatype === 'datetime'" matIconSuffix [for]="dateTimePicker"></mat-datepicker-toggle>
+    <input *ngIf="field.datatype === 'datetime' && !_chipInput" [matDatepicker]="dateTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" (dateChange)="onDateTimePickerSelect($event)" style="display:none"/>
+    <mat-datepicker-toggle *ngIf="field.datatype === 'datetime' && !_chipInput" matIconSuffix [for]="dateTimePicker"></mat-datepicker-toggle>
     <mat-datepicker #dateTimePicker></mat-datepicker>
     <!-- Hidden input for time picker binding -->
-    <input *ngIf="field.datatype === 'datetime'" [ngxMatTimepicker]="dateTimeTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" [format]="24" [value]="dateTimeTimeValue" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
-    <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'datetime'" matIconSuffix [for]="dateTimeTimePicker">
+    <input *ngIf="field.datatype === 'datetime' && !_chipInput" [ngxMatTimepicker]="dateTimeTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" [format]="24" [value]="dateTimeTimeValue" tabindex="-1" aria-hidden="true" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
+    <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'datetime' && !_chipInput" matIconSuffix [for]="dateTimeTimePicker">
+      <!-- A name for the toggle's button: it had none (T-2). -->
+      <span ngxMatTimepickerToggleIcon><mat-icon aria-hidden="true">schedule</mat-icon><span class="sr-only">{{ 'FIELD.OPEN_CLOCK' | translate }}</span></span>
     </ngx-mat-timepicker-toggle>
     <ngx-mat-timepicker #dateTimeTimePicker [format]="24" (timeChanged)="onDateTimeTimeChange($event)"></ngx-mat-timepicker>
 
@@ -86,7 +88,7 @@
          The picker directive sits on a hidden input: on the typed one it parsed
          the text first and replaced it ("Invalid DateTime", 9.30 refused). -->
     <input
-      *ngIf="field.datatype === 'time'"
+      *ngIf="field.datatype === 'time' && !_chipInput"
       #typedTime
       matInput
       [required]="field.isRequired"
@@ -96,14 +98,16 @@
       (change)="onTimeTyped($any($event.target).value)"
       [placeholder]="field.description || 'HH:MM'"
       [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
-    <input *ngIf="field.datatype === 'time'" [ngxMatTimepicker]="timePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" [format]="24" [value]="field.value" tabindex="-1" aria-hidden="true" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
-    <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'time'" matIconSuffix [for]="timePicker">
+    <input *ngIf="field.datatype === 'time' && !_chipInput" [ngxMatTimepicker]="timePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" [format]="24" [value]="field.value" tabindex="-1" aria-hidden="true" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
+    <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'time' && !_chipInput" matIconSuffix [for]="timePicker">
+      <!-- A name for the toggle's button: it had none (T-2). -->
+      <span ngxMatTimepickerToggleIcon><mat-icon aria-hidden="true">schedule</mat-icon><span class="sr-only">{{ 'FIELD.OPEN_CLOCK' | translate }}</span></span>
     </ngx-mat-timepicker-toggle>
     <ngx-mat-timepicker #timePicker [format]="24" (timeChanged)="onTimeStringChange($event)" (closed)="typedTime?.nativeElement?.focus()"></ngx-mat-timepicker>
 
     <!-- Number field -->
     <input
-      *ngIf="field.datatype === 'number' || field.datatype === 'integer'"
+      *ngIf="(field.datatype === 'number' || field.datatype === 'integer') && !_chipInput"
       matInput
       [required]="field.isRequired"
       [errorStateMatcher]="errorMatcher"
@@ -117,7 +121,7 @@
 
     <!-- URL/URI field -->
     <input
-      *ngIf="field.datatype === 'url' || field.datatype === 'uri'"
+      *ngIf="(field.datatype === 'url' || field.datatype === 'uri') && !_chipInput"
       matInput
       [required]="field.isRequired"
       [errorStateMatcher]="errorMatcher"
@@ -131,7 +135,7 @@
 
     <!-- Duration field (ISO 8601: P1D, PT3H, etc.) -->
     <input
-      *ngIf="field.datatype === 'duration'"
+      *ngIf="field.datatype === 'duration' && !_chipInput"
       matInput
       [required]="field.isRequired"
       [errorStateMatcher]="errorMatcher"
@@ -289,10 +293,6 @@
       </mat-option>
     </mat-autocomplete>
 
-    <!-- Inline hints inside mat-form-field -->
-    <mat-hint *ngIf="field.status === FieldStatus.EXTRACTING && !validationWarning && !validationError" class="field-status extracting">
-      {{ 'FIELD.STATUS.EXTRACTING' | translate }}
-    </mat-hint>
   </mat-form-field>
 
   <!-- Vocabulary Tree Picker (opens as overlay below the field) -->

@@ -1,269 +1,75 @@
-# URL-Parameter Dokumentation
+# URL-Parameter der Standalone-Seite
 
-Diese Dokumentation beschreibt alle verfügbaren URL-Parameter zur Konfiguration des Metadata-Agent Frontends.
+Gilt nur für die eigene Standalone-Seite des Widgets (`index.html` mit
+`<app-root data-metadata-agent-app>`). Eingebettet als
+`<metadata-agent-canvas>` werden dieselben Einstellungen als Attribute bzw.
+Properties gesetzt (README, Abschnitt „Attribute“); die Seiten-URL wird dort
+nicht gelesen.
 
-## Basis-URL
+Quelle: `src/app/app.component.ts` (`parseQueryParams`). Nicht angegebene
+Parameter lassen den Wert des Widgets bzw. des Layouts unverändert.
+
+## Verbindung und Daten (nur lokal)
+
+`apiUrl` und `dataUrl` werden **nur auf `localhost`, `127.0.0.1` und `[::1]`**
+gelesen. Auf einer ausgelieferten Seite könnte ein Link sonst jedes Hochladen
+und jeden Datensatz an einen anderen Server schicken.
+
+| Parameter | Wert | Wirkung |
+|---|---|---|
+| `apiUrl` | URL | Adresse des Metadata-Agents (sonst aus der Umgebung) |
+| `dataUrl` | URL | JSON laden und wie `metadata-input` importieren |
+
+## Schema
+
+| Parameter | Wert | Standard |
+|---|---|---|
+| `context` oder `contextName` | Kontextname, z. B. `default`, `mds_oeh` | `default` |
+| `version` oder `schemaVersion` | Version, z. B. `2.0.0` | `latest` |
+
+## Layout und Anzeige
+
+| Parameter | Wert | Wirkung |
+|---|---|---|
+| `layout` | `default`, `plugin`, `dialog`, `detail`, `clean`, `prueftisch`, `prueftisch-org` | Layout; Aliase wie `metadatenpruefdialog` (→ `clean`) oder `extension` (→ `plugin`) gelten weiter |
+| `columns` | `1` bis `4` | Spaltenzahl (sonst Vorgabe des Layouts) |
+| `flatGroups` | `true` / `false` | Alle Gruppen eines Schemas zu einer zusammenfassen |
+| `readonly` | `true` / `false` | Nur lesen |
+| `viewerMode` oder `viewer` | `true` / `false` | Alter Name für `readonly` |
+| `borderless` | `true` / `false` | Ohne Rahmen und Schatten |
+| `highlightAi` | alles außer `false` schaltet ein | KI-Werte hervorheben; ohne Parameter **aus** |
+| `inputMode` | `text`, `url`, `nodeId` | Eingabeart (Standard `text`) |
+
+## Bedienelemente
+
+`true` zeigt, jeder andere Wert verbirgt; ohne Parameter gilt die Vorgabe des Layouts.
+
+| Parameter | Element |
+|---|---|
+| `showStatusBar` | Statusleiste |
+| `controls` | Schwebende Steuerelemente |
+| `showContentType` | Inhaltstyp-Auswahl |
+| `showContentTypeOnly` | Nur die Inhaltstyp-Auswahl in den Steuerelementen |
+| `showSaveButton` | Speichern |
+| `showUploadButton` | Hochladen ins Repository |
+| `showJsonLoader` | JSON laden |
+| `showLanguageSwitcher` | Sprachumschalter |
+| `showResetButton` | Zurücksetzen |
+
+Weitere Attribute des Elements (z. B. `show-input-area`, `show-core-fields`,
+`show-preview`, `enable-screenshot`) haben keinen URL-Parameter.
+
+## Was das Widget an den Agenten sendet
+
+Die Extraktion ruft `POST /generate` auf: Text mit `text`, eine URL mit
+`input_source: "url"`, `source_url` und `extraction_method: "browser"`, eine
+Node-ID mit `input_source: "node_id"` und `node_id`. Die vollständige
+Beschreibung steht in der API-Dokumentation des Agenten (`/docs`).
+
+## Beispiele
 
 ```
-http://localhost:61627/
-https://metadata.example.org/
+http://localhost:4200/?layout=clean&showStatusBar=true
+http://localhost:4200/?layout=dialog&columns=2&readonly=true
+http://localhost:4200/?apiUrl=http://localhost:8000&context=mds_oeh&version=2.0.0&inputMode=url
 ```
-
----
-
-## Layout-Parameter
-
-### `layout`
-Wählt das Layout-Preset für die Anzeige.
-
-| Wert | Beschreibung |
-|------|-------------|
-| `default` | Standard-Layout mit allen Features (Standard) |
-| `viewer` | Viewer-Layout für Anzeige/Bearbeitung |
-| `metadatenpruefdialog` | Kompaktes Dialog-Layout für Metadatenprüfung |
-| `prueftisch` | Review-Table Layout mit Card-Design für QA |
-
-**Beispiel:**
-```
-?layout=metadatenpruefdialog
-```
-
----
-
-## Anzeige-Parameter
-
-### `showStatusBar`
-Zeigt/versteckt die Status-Bar mit Content-Type-Selector, Feld-Statistiken und Fortschrittsbalken.
-
-| Wert | Beschreibung |
-|------|-------------|
-| `true` | Status-Bar anzeigen |
-| `false` | Status-Bar verstecken |
-
-**Standard-Werte:**
-- `default` Layout: `true`
-- `metadatenpruefdialog` Layout: `false`
-
-**Beispiel:**
-```
-?layout=metadatenpruefdialog&showStatusBar=true
-```
-
-### `controls`
-Zeigt/versteckt die schwebenden Steuerelemente (Content-Type-Selector, Language-Switcher).
-
-| Wert | Beschreibung |
-|------|-------------|
-| `true` | Floating Controls anzeigen |
-| `false` | Floating Controls verstecken |
-
-**Beispiel:**
-```
-?controls=true
-```
-
-### `viewerMode` / `viewer`
-Aktiviert den Viewer-Modus (nur Anzeige).
-
-| Wert | Beschreibung |
-|------|-------------|
-| `true` | Viewer-Modus aktivieren |
-
-**Beispiel:**
-```
-?viewerMode=true
-?viewer=true
-```
-
-### `readonly`
-Aktiviert den Nur-Lesen-Modus (keine Bearbeitung möglich).
-
-| Wert | Beschreibung |
-|------|-------------|
-| `true` | Readonly-Modus aktivieren |
-
-**Beispiel:**
-```
-?readonly=true
-```
-
-### `borderless`
-Entfernt Rahmen und Hintergründe für Embedding.
-
-| Wert | Beschreibung |
-|------|-------------|
-| `true` | Borderless-Modus aktivieren |
-
-**Beispiel:**
-```
-?borderless=true
-```
-
----
-
-## Input-Parameter
-
-### `inputMode`
-Wählt den Eingabe-Modus für die Datenquelle.
-
-| Wert | Beschreibung |
-|------|-------------|
-| `text` | Text-Eingabe (Standard) - Textarea für freien Text |
-| `url` | URL-Eingabe - Extrahiert Metadaten von einer Webseite |
-| `nodeId` | NodeId-Eingabe - Lädt Metadaten aus dem Repository |
-
-**Beispiel:**
-```
-?inputMode=url
-?inputMode=nodeId
-```
-
-### `highlightAi`
-Aktiviert/deaktiviert die violette Hervorhebung von KI-generierten Feldern.
-
-| Wert | Beschreibung |
-|------|-------------|
-| `true` | KI-Felder violett hervorheben (Standard) |
-| `false` | Keine farbliche Unterscheidung |
-
-**Beispiel:**
-```
-?highlightAi=false
-```
-
----
-
-## Kombinierte Beispiele
-
-### Standard-Ansicht mit URL-Eingabe
-```
-http://localhost:61627/?inputMode=url
-```
-
-### Metadatenprüfdialog mit Status-Bar
-```
-http://localhost:61627/?layout=metadatenpruefdialog&showStatusBar=true
-```
-
-### Viewer-Modus ohne Bearbeitung
-```
-http://localhost:61627/?layout=viewer&readonly=true
-```
-
-### NodeId-Eingabe mit Status-Bar
-```
-http://localhost:61627/?inputMode=nodeId&showStatusBar=true
-```
-
-### Komplett konfiguriertes Beispiel
-```
-http://localhost:61627/?layout=metadatenpruefdialog&showStatusBar=true&inputMode=url&controls=true
-```
-
----
-
-## API-Parameter
-
-Die folgenden Parameter werden intern an die API gesendet:
-
-### Text-Extraktion (`inputMode=text`)
-```json
-{
-  "input_source": "text",
-  "text": "<eingegebener Text>",
-  "context": "default",
-  "language": "de",
-  "include_core": true,
-  "enable_geocoding": true,
-  "normalize": true
-}
-```
-
-### URL-Extraktion (`inputMode=url`)
-```json
-{
-  "input_source": "url",
-  "text": "",
-  "source_url": "<eingegebene URL>",
-  "extraction_method": "simple",
-  "context": "default",
-  "language": "de",
-  "include_core": true,
-  "enable_geocoding": true,
-  "normalize": true
-}
-```
-
-### NodeId-Extraktion (`inputMode=nodeId`)
-```json
-{
-  "input_source": "node_id",
-  "text": "",
-  "node_id": "<eingegebene NodeId>",
-  "repository": "staging",
-  "context": "default",
-  "language": "de",
-  "include_core": true,
-  "enable_geocoding": true,
-  "normalize": true
-}
-```
-
----
-
-## Layouts im Detail
-
-### Default Layout
-- **Input-Area:** Ja (Text/URL/NodeId je nach `inputMode`)
-- **Status-Bar:** Ja
-- **Feld-Gruppen:** Ja (Core + Spezial)
-- **Footer:** Ja (Download, Submit)
-- **Floating Controls:** Ja
-
-### Viewer Layout
-- **Input-Area:** Nein
-- **Status-Bar:** Ja
-- **Feld-Gruppen:** Ja
-- **Footer:** Nein
-- **Floating Controls:** Ja
-
-### Metadatenprüfdialog Layout
-- **Input-Area:** Nein (für Dialog-Embedding)
-- **Status-Bar:** Nein (aktivierbar via `showStatusBar=true`)
-- **Feld-Gruppen:** Ja (kompakt)
-- **Footer:** Nein
-- **Floating Controls:** Ja (Content-Type + Language)
-
-### Prüftisch Layout
-- **Input-Area:** Nein
-- **Status-Bar:** Nein
-- **Feld-Gruppen:** Ja (Card-Design mit Icons in Headern)
-- **Footer:** Nein
-- **Floating Controls:** Ja (Content-Type + Language)
-
-**Besonderheiten:**
-- Gruppen-Header mit Icons (z.B. 📄 BESCHREIBUNG, 🎓 PÄDAGOGISCHES)
-- Clean card-based Design für QA-Workflows
-- Optimiert für Metadaten-Review
-
----
-
-## Changelog
-
-### 2026-02-10
-- **NEU:** `highlightAi` Parameter — KI-Hervorhebung ein/ausschaltbar
-- **NEU:** `_origins` Dict im Export-Format — speichert Herkunft (AI/User) pro Feld
-- Import stellt `isAiGenerated` korrekt aus `_origins` wieder her
-- Subfields erben `isAiGenerated` vom Parent-Feld
-
-### 2026-01-23
-- **NEU:** `prueftisch` Layout für QA-Workflows (Card-Design mit Icons)
-- `inputMode` Parameter hinzugefügt (text, url, nodeId)
-- API-Parameter für URL-Extraktion korrigiert (`input_source`, `source_url`, `extraction_method`)
-- API-Parameter für NodeId-Extraktion korrigiert (`input_source`, `repository`)
-- Status-Bar standardmäßig AUS in metadatenpruefdialog Layout
-
-### 2026-01-22
-- `showStatusBar` Parameter hinzugefügt
-- `controls` Parameter hinzugefügt
-- Metadatenprüfdialog Layout implementiert

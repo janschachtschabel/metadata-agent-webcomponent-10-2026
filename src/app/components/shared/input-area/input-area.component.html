@@ -75,7 +75,8 @@
       mat-flat-button
       class="btn-extract"
       [disabled]="!userText.trim() || isExtracting"
-      (click)="startExtraction.emit()">
+      [disabledInteractive]="isExtracting"
+      (click)="isExtracting || startExtraction.emit()">
       <mat-icon *ngIf="!isExtracting">play_arrow</mat-icon>
       <mat-icon *ngIf="isExtracting">hourglass_empty</mat-icon>
       <span *ngIf="!isExtracting">{{ 'INPUT.START_EXTRACTION' | translate }}</span>
@@ -88,7 +89,8 @@
       mat-flat-button
       class="btn-extract"
       [disabled]="!sourceUrl.trim() || isExtracting"
-      (click)="startUrlExtraction.emit(sourceUrl)">
+      [disabledInteractive]="isExtracting"
+      (click)="isExtracting || startUrlExtraction.emit(sourceUrl)">
       <mat-icon *ngIf="!isExtracting">language</mat-icon>
       <mat-icon *ngIf="isExtracting">hourglass_empty</mat-icon>
       <span *ngIf="!isExtracting">{{ 'INPUT.EXTRACT_FROM_URL' | translate }}</span>
@@ -101,7 +103,8 @@
       mat-flat-button
       class="btn-extract"
       [disabled]="!nodeId.trim() || isExtracting"
-      (click)="startNodeIdExtraction.emit(nodeId)">
+      [disabledInteractive]="isExtracting"
+      (click)="isExtracting || startNodeIdExtraction.emit(nodeId)">
       <mat-icon *ngIf="!isExtracting">cloud_download</mat-icon>
       <mat-icon *ngIf="isExtracting">hourglass_empty</mat-icon>
       <span *ngIf="!isExtracting">{{ 'INPUT.EXTRACT_FROM_NODE' | translate }}</span>

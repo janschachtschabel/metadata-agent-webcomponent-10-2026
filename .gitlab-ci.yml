@@ -23,7 +23,7 @@ stages:
 widget build and tests:
   stage: test
   interruptible: true
-  image: node:22
+  image: node:22.20.0-bookworm
   cache:
     key:
       files:
@@ -32,7 +32,10 @@ widget build and tests:
     - .npm
   before_script:
   # Karma needs a real browser. ChromeHeadlessCI in karma.conf.js adds the
-  # --no-sandbox flag a container requires.
+  # --no-sandbox flag a container requires. The image is pinned to a Node
+  # release (not `node:22`, which moves); Chromium comes from the Debian
+  # bookworm archive of that image and is not pinned further - a digest pin of
+  # the image would freeze it as well (debt, see CHANGELOG 3.0.0).
   - apt-get update -qq && apt-get install -y -qq chromium
   - export CHROME_BIN=$(which chromium)
   - npm ci --cache .npm --prefer-offline --no-audit --no-fund
@@ -63,7 +66,7 @@ widget build and tests:
 audit dev dependencies:
   stage: test
   interruptible: true
-  image: node:22
+  image: node:22.20.0-bookworm
   needs: []
   allow_failure: true
   script:

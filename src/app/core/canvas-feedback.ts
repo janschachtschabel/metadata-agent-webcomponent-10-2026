@@ -20,13 +20,17 @@ export function describeFailure(error: any, i18n: I18nService): string {
  * ("[object Object]"), `error.message` names the problem.
  */
 export function failureCause(error: any, i18n: I18nService): string {
+  return withRequestId(causeOf(error, i18n), error?.error, i18n);
+}
+
+function causeOf(error: any, i18n: I18nService): string {
   const body = error?.error;
-  const cause =
+  return (
     body?.error?.message ||
     (typeof body?.detail === 'string' ? body.detail : '') ||
     error?.message ||
-    translated(i18n, 'ALERTS.UNKNOWN_ERROR', undefined, 'Unknown error');
-  return withRequestId(cause, body, i18n);
+    translated(i18n, 'ALERTS.UNKNOWN_ERROR', undefined, 'Unknown error')
+  );
 }
 
 /**
@@ -45,16 +49,19 @@ export function translated(
 }
 
 /**
- * A failed upload. After a timeout (UPLOAD_TIMEOUT) the editor needs to know
- * whether the node that was being written is gone or still in the repository.
+ * A failed upload. The editor needs to know whether a node that was being
+ * written is gone or still in the repository: after a timeout (UPLOAD_TIMEOUT)
+ * and after a failed write (422/502) that names one (`discarded_node`, `node`).
  */
 export function uploadFailure(error: any, i18n: I18nService): string {
   const body = error?.error;
-  if (body?.error?.code !== 'UPLOAD_TIMEOUT') return failureCause(error, i18n);
-  const notes = [i18n.instant('ALERTS.UPLOAD_TIMEOUT')];
-  if (body.discarded_node) {
+  const cause = body?.error?.code === 'UPLOAD_TIMEOUT'
+    ? i18n.instant('ALERTS.UPLOAD_TIMEOUT')
+    : causeOf(error, i18n);
+  const notes = [cause];
+  if (body?.discarded_node) {
     notes.push(i18n.instant('ALERTS.UPLOAD_TIMEOUT_DISCARDED'));
-  } else if (body.node?.nodeId) {
+  } else if (body?.node?.nodeId) {
     notes.push(i18n.instant('ALERTS.UPLOAD_TIMEOUT_NODE_KEPT', { nodeId: body.node.nodeId }));
   }
   return withRequestId(notes.join(' '), body, i18n);

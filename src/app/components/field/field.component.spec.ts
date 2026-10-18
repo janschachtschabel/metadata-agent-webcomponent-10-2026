@@ -4,6 +4,7 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { NgxMatTimepickerComponent } from 'ngx-mat-timepicker';
+import { DateAdapter } from '@angular/material/core';
 
 import { FieldComponent } from './field.component';
 import { CanvasFieldState, FieldStatus } from '../../shared/models/canvas.models';
@@ -131,6 +132,20 @@ describe('FieldComponent chips', () => {
   });
 });
 
+/**
+ * Runs `act` and the field's 200 ms blur delay on a mock clock: no real
+ * waiting, and no timing the test depends on (final audit 18.10., T-3).
+ */
+function passingBlurDelay(act: () => void): void {
+  jasmine.clock().install();
+  try {
+    act();
+    jasmine.clock().tick(250);
+  } finally {
+    jasmine.clock().uninstall();
+  }
+}
+
 function plainField(overrides: Partial<CanvasFieldState> = {}): CanvasFieldState {
   return {
     fieldId: 'cclom:title', label: 'Titel', group: 'g', groupLabel: 'G', groupOrder: 1,
@@ -168,7 +183,7 @@ async function renderField(field: CanvasFieldState, lang = 'de', inputs: Record<
  * screen reader announced neither "required" nor what was wrong with a value.
  */
 describe('FieldComponent errors and required state', () => {
-  afterEach(() => localStorage.removeItem('app_language'));
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
   it('says that a field is required and points at the hint', async () => {
     const fixture = await renderField(plainField({ isRequired: true }));
@@ -204,9 +219,47 @@ describe('FieldComponent errors and required state', () => {
   });
 });
 
+/**
+ * The 2.1.1 end-to-end check: what the editor types is validated on leaving
+ * the field, and a rejection reaches them as an alert outside Material's
+ * subscript (which the layouts hide).
+ */
+describe('FieldComponent validation from typing to alert', () => {
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
+
+  async function typeAndLeave(field: CanvasFieldState, text: string) {
+    const fixture = await renderField(field);
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+    const input = fixture.nativeElement.querySelector('input[type="number"]') as HTMLInputElement;
+    passingBlurDelay(() => {
+      input.value = text;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('blur'));
+    });
+    fixture.detectChanges();
+    return { alert: fixture.nativeElement.querySelector('[role="alert"]') as HTMLElement | null, emitted };
+  }
+
+  it('shows a typed invalid number as an alert outside the Material subscript', async () => {
+    const { alert, emitted } = await typeAndLeave(plainField({ datatype: 'integer' }), '12.7');
+
+    expect(alert?.textContent?.trim()).toBeTruthy();
+    expect(alert!.closest('.mat-mdc-form-field-subscript-wrapper')).toBeNull();
+    expect(emitted).toEqual([]);
+  });
+
+  it('shows no alert for a typed valid number and emits it', async () => {
+    const { alert, emitted } = await typeAndLeave(plainField({ datatype: 'number' }), '42');
+
+    expect(alert).toBeNull();
+    expect(emitted).toEqual([42]);
+  });
+});
+
 /** Audit U-16: the AI origin was shown by colour alone. */
 describe('FieldComponent AI origin', () => {
-  afterEach(() => localStorage.removeItem('app_language'));
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
   it('names the AI origin in text, not only in colour', async () => {
     const fixture = await renderField(
@@ -232,7 +285,7 @@ describe('FieldComponent AI origin', () => {
 
 /** Audit U-14: the time field accepted only the clock dial; dates were always German. */
 describe('FieldComponent dates and times', () => {
-  afterEach(() => localStorage.removeItem('app_language'));
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
   it('accepts a typed time', async () => {
     const fixture = await renderField(plainField({ fieldId: 'schema:startTime', datatype: 'time' }));
@@ -338,6 +391,82 @@ describe('FieldComponent dates and times', () => {
     expect(input.value).toBe('03.05.2026');
   });
 
+  // Final audit 18.10. (W-L2): a typed date-time had no range check, and text
+  // that was not recognised was dropped without a word.
+  describe('a typed date-time', () => {
+    async function typeDateTime(text: string) {
+      const fixture = await renderField(plainField({ fieldId: 'schema:startDate', datatype: 'datetime' }));
+      const emitted: unknown[] = [];
+      fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+      fixture.componentInstance.inputValue = text;
+      fixture.componentInstance.onDateTimeBlur();
+      return { component: fixture.componentInstance, emitted };
+    }
+
+    for (const text of ['31.02.2026 25:99', '31.02.2026 10:00', 'morgen']) {
+      it(`rejects "${text}" with a message and emits nothing`, async () => {
+        const { component, emitted } = await typeDateTime(text);
+
+        expect(emitted).toEqual([]);
+        expect(component.validationError).toBe('VALIDATION.INVALID_DATETIME');
+        expect(component.inputValue).withContext('what the editor typed stays').toBe(text);
+      });
+    }
+
+    it('accepts a valid one', async () => {
+      const { component, emitted } = await typeDateTime('03.05.2026 9:30');
+
+      expect(emitted).toEqual(['2026-05-03T09:30']);
+      expect(component.validationError).toBeFalsy();
+    });
+
+    it('says nothing about an AI value it cannot read while the editor did not touch it', async () => {
+      const fixture = await renderField(plainField({ fieldId: 'schema:startDate', datatype: 'datetime', status: FieldStatus.FILLED, value: 'Frühjahr 2026' }));
+      const emitted: unknown[] = [];
+      fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+
+      fixture.componentInstance.onDateTimeBlur();
+
+      expect(emitted).toEqual([]);
+      expect(fixture.componentInstance.validationError).toBeFalsy();
+    });
+  });
+
+  // Final audit 18.10. (W-L3): the date adapter rolled 31.02. over to March
+  // and let Date.parse guess ("1" → 2001-01-01, "Sommer 2026" → 1 January).
+  describe('the date adapter', () => {
+    async function adapter(): Promise<DateAdapter<Date>> {
+      const fixture = await renderField(plainField({ fieldId: 'schema:startDate', datatype: 'date' }));
+      return fixture.debugElement.injector.get(DateAdapter) as DateAdapter<Date>;
+    }
+
+    it('reads a typed day-first date', async () => {
+      const date = (await adapter()).parse('03.05.2026', null)!;
+
+      expect([date.getFullYear(), date.getMonth(), date.getDate()]).toEqual([2026, 4, 3]);
+    });
+
+    for (const text of ['31.02.2026', '1', 'Sommer 2026']) {
+      it(`does not turn "${text}" into a date`, async () => {
+        const dates = await adapter();
+        const parsed = dates.parse(text, null);
+
+        expect(parsed === null || !dates.isValid(parsed)).toBeTrue();
+      });
+    }
+
+    it('reports a typed date it cannot read', async () => {
+      const fixture = await renderField(plainField({ fieldId: 'schema:startDate', datatype: 'date' }));
+      const emitted: unknown[] = [];
+      fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+
+      fixture.componentInstance.onDateChange({ value: new Date(NaN) });
+
+      expect(emitted).toEqual([]);
+      expect(fixture.componentInstance.validationError).toBe('VALIDATION.INVALID_DATE');
+    });
+  });
+
   it('shows a date and time in the format of the current language', async () => {
     const fixture = await renderField(plainField({ fieldId: 'schema:startDate', datatype: 'datetime', value: '2026-05-03T14:30' }), 'en');
 
@@ -351,7 +480,7 @@ describe('FieldComponent dates and times', () => {
  * kept the field against the AI value on its way.
  */
 describe('FieldComponent leaving a field without a change', () => {
-  afterEach(() => localStorage.removeItem('app_language'));
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
   async function emissions(field: CanvasFieldState, act: (c: FieldComponent) => void | Promise<void>): Promise<unknown[]> {
     const fixture = await renderField(field);
@@ -361,12 +490,11 @@ describe('FieldComponent leaving a field without a change', () => {
     return emitted;
   }
 
-  const afterBlur = () => new Promise(resolve => setTimeout(resolve, 250));
 
   it('emits nothing for an unchanged text value', async () => {
     const emitted = await emissions(
       plainField({ status: FieldStatus.FILLED, value: 'Bruchrechnung' }),
-      async c => { c.onBlur(); await afterBlur(); },
+      c => passingBlurDelay(() => c.onBlur()),
     );
 
     expect(emitted).toEqual([]);
@@ -375,7 +503,7 @@ describe('FieldComponent leaving a field without a change', () => {
   it('still emits a changed text value', async () => {
     const emitted = await emissions(
       plainField({ status: FieldStatus.FILLED, value: 'Bruchrechnung' }),
-      async c => { c.inputValue = 'Dezimalzahlen'; c.onBlur(); await afterBlur(); },
+      c => passingBlurDelay(() => { c.inputValue = 'Dezimalzahlen'; c.onBlur(); }),
     );
 
     expect(emitted).toEqual(['Dezimalzahlen']);
@@ -399,6 +527,29 @@ describe('FieldComponent leaving a field without a change', () => {
     expect(emitted).toEqual([]);
   });
 
+  // Review 18.10.: a value from the backend with seconds or an offset is shown
+  // as "TT.MM.JJJJ HH:MM". Tabbing through compared that with the stored value,
+  // emitted "...T10:00" (offset gone) and marked the AI value as typed.
+  for (const value of ['2026-05-03T10:00:00', '2026-05-03T10:00:00Z', '2026-05-03T10:00:00+02:00']) {
+    it(`emits nothing for an unchanged date-time stored as ${value}`, async () => {
+      const emitted = await emissions(
+        plainField({ fieldId: 'schema:startDate', datatype: 'datetime', status: FieldStatus.FILLED, value }),
+        c => c.onDateTimeBlur(),
+      );
+
+      expect(emitted).toEqual([]);
+    });
+  }
+
+  it('still emits a changed date-time of a value stored with an offset', async () => {
+    const emitted = await emissions(
+      plainField({ fieldId: 'schema:startDate', datatype: 'datetime', status: FieldStatus.FILLED, value: '2026-05-03T10:00:00+02:00' }),
+      c => { c.inputValue = '04.05.2026 10:00'; c.onDateTimeBlur(); },
+    );
+
+    expect(emitted).toEqual(['2026-05-04T10:00']);
+  });
+
   it('still emits an emptied date-time', async () => {
     const emitted = await emissions(
       plainField({ fieldId: 'schema:startDate', datatype: 'datetime', status: FieldStatus.FILLED, value: '2026-05-03T14:30' }),
@@ -415,7 +566,7 @@ describe('FieldComponent leaving a field without a change', () => {
  * after the event), the typed word stayed in the textarea next to its chip.
  */
 describe('FieldComponent multi-value input', () => {
-  afterEach(() => localStorage.removeItem('app_language'));
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
   it('empties the textarea on the first Enter right after typing', async () => {
     const field = plainField({ fieldId: 'cclom:general_keyword', label: 'Schlagwörter', datatype: 'array', multiple: true });
@@ -438,9 +589,86 @@ describe('FieldComponent multi-value input', () => {
   });
 });
 
+/**
+ * Final audit 18.10. (W-L4): a multi-valued field of a special datatype
+ * (person.json schema:url: uri + multiple) rendered one input with an empty
+ * value - the existing values were invisible, new ones went in unchecked, and
+ * leaving a multi-valued date-time emitted null and wiped the list.
+ */
+describe('FieldComponent multi-valued special datatypes', () => {
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
+
+  const URLS = plainField({
+    fieldId: 'schema:url', label: 'Webseiten', datatype: 'uri', multiple: true,
+    status: FieldStatus.FILLED, value: ['https://a.example', 'https://b.example'],
+  });
+
+  function chips(fixture: ComponentFixture<FieldComponent>): string[] {
+    return Array.from(fixture.nativeElement.querySelectorAll('mat-chip') as NodeListOf<HTMLElement>)
+      .map(chip => chip.textContent!.replace('cancel', '').trim());
+  }
+
+  async function type(fixture: ComponentFixture<FieldComponent>, text: string): Promise<unknown[]> {
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+    const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+    textarea.value = text;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true, cancelable: true }));
+    return emitted;
+  }
+
+  it('shows the values as chips, also read-only', async () => {
+    expect(chips(await renderField(URLS))).toEqual(['https://a.example', 'https://b.example']);
+    TestBed.resetTestingModule();
+    expect(chips(await renderField(URLS, 'de', { readonly: true }))).toEqual(['https://a.example', 'https://b.example']);
+  });
+
+  it('checks a new item as an address', async () => {
+    const fixture = await renderField(URLS);
+
+    const emitted = await type(fixture, 'kein link');
+
+    expect(emitted).toEqual([]);
+    expect(fixture.componentInstance.validationError).toContain('VALIDATION.INVALID_URL');
+  });
+
+  it('adds a valid item, normalised', async () => {
+    const fixture = await renderField(URLS);
+
+    const emitted = await type(fixture, 'c.example');
+
+    expect(emitted).toEqual([['https://a.example', 'https://b.example', 'https://c.example']]);
+  });
+
+  it('a multi-valued date-time keeps its list when left without typing', async () => {
+    const fixture = await renderField(plainField({
+      fieldId: 'schema:previousStartDate', datatype: 'datetime', multiple: true,
+      status: FieldStatus.FILLED, value: ['2026-05-03T14:00'],
+    }));
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+    const input = fixture.nativeElement.querySelector('textarea, input[matInput]') as HTMLElement;
+
+    passingBlurDelay(() => input.dispatchEvent(new Event('blur')));
+
+    expect(emitted).toEqual([]);
+    expect(chips(fixture)).toEqual(['2026-05-03T14:00']);
+  });
+
+  it('checks a new date-time item as a date-time', async () => {
+    const fixture = await renderField(plainField({
+      fieldId: 'schema:previousStartDate', datatype: 'datetime', multiple: true, value: [],
+    }));
+
+    expect(await type(fixture, '31.02.2026 10:00')).toEqual([]);
+    expect(fixture.componentInstance.validationError).toContain('VALIDATION.INVALID_DATETIME');
+  });
+});
+
 /** Audit U-16: a value typed into a field that is then destroyed is not emitted later. */
 describe('FieldComponent timers', () => {
-  afterEach(() => localStorage.removeItem('app_language'));
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
   it('drops a pending blur check when the field goes away', async () => {
     const fixture = await renderField(plainField());
@@ -448,9 +676,10 @@ describe('FieldComponent timers', () => {
     fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
     fixture.componentInstance.inputValue = 'Bruchrechnung';
 
-    fixture.componentInstance.onBlur();
-    fixture.destroy();
-    await new Promise(resolve => setTimeout(resolve, 250));
+    passingBlurDelay(() => {
+      fixture.componentInstance.onBlur();
+      fixture.destroy();
+    });
 
     expect(emitted).toEqual([]);
   });

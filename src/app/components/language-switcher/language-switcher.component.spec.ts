@@ -12,7 +12,7 @@ import { seriousA11yViolations } from '../../testing/a11y';
  */
 describe('LanguageSwitcherComponent', () => {
   // I18nService remembers the choice; it must not leak into other specs.
-  afterEach(() => localStorage.removeItem('app_language'));
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
   async function render(lang: 'de' | 'en') {
     await TestBed.configureTestingModule({

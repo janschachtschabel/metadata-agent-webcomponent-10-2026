@@ -54,8 +54,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "2mb",
-                  "maximumError": "6mb"
+                  "maximumWarning": "1.6mb",
+                  "maximumError": "2mb"
                 }
               ],
               "fileReplacements": [
@@ -79,8 +79,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "2mb",
-                  "maximumError": "6mb"
+                  "maximumWarning": "1.6mb",
+                  "maximumError": "2mb"
                 }
               ],
               "fileReplacements": [

@@ -37,7 +37,8 @@
     },
     "BOOLEAN": {
       "TRUE": "Yes",
-      "FALSE": "No"
+      "FALSE": "No",
+      "EMPTY": "Please select"
     },
     "RADIO": {
       "NO_SELECTION": "no selection"
@@ -53,7 +54,8 @@
     "AI_SUGGESTION": "AI suggestion",
     "DATE_PLACEHOLDER": "DD/MM/YYYY",
     "DATETIME_PLACEHOLDER": "DD/MM/YYYY HH:MM",
-    "DURATION_PLACEHOLDER": "e.g. PT2H, P1D, 2 hours"
+    "DURATION_PLACEHOLDER": "e.g. PT2H, P1D, 2 hours",
+    "OPEN_CLOCK": "Open clock"
   },
   "PREVIEW": {
     "TITLE": "Preview Image",
@@ -81,8 +83,8 @@
     "INVALID_URL": "Invalid URL",
     "INVALID_NUMBER": "Invalid number",
     "INVALID_BOOLEAN": "Invalid boolean value (yes/no)",
-    "INVALID_DATE": "Invalid date (Format: YYYY-MM-DD)",
-    "INVALID_DATETIME": "Invalid date/time",
+    "INVALID_DATE": "Invalid date (format: DD/MM/YYYY)",
+    "INVALID_DATETIME": "Invalid date/time (format: DD/MM/YYYY HH:MM)",
     "MIN_LENGTH": "Minimum length: {{min}} characters",
     "MAX_LENGTH": "Maximum length: {{max}} characters",
     "MIN_VALUE": "Minimum value: {{min}}",
@@ -152,5 +154,9 @@
     "INCOMPLETE_RESPONSE": "The metadata agent's response contained no result.",
     "REQUEST_ID": "Request ID: {{id}}",
     "SCHEMA_UNAVAILABLE": "The fields of the content type “{{type}}” could not be loaded. Please try again later."
+  },
+  "ANNOUNCE": {
+    "EXTRACTION_STARTED": "Extraction running …",
+    "EXTRACTION_DONE": "Extraction finished. Fields filled: {{count}}."
   }
 }

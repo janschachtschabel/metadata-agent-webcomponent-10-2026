@@ -3,6 +3,11 @@ import { CanvasState, FieldStatus } from '../shared/models/canvas.models';
 import { SchemaService } from './schema.service';
 import { ShapeExpanderService } from './shape-expander.service';
 
+/** The metadata without the internal keys (_origins, _source_text, ...). */
+export function withoutInternalKeys(metadata: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(Object.entries(metadata).filter(([key]) => !key.startsWith('_')));
+}
+
 export function collectMetadata(
   state: CanvasState,
   shapeExpander: ShapeExpanderService
@@ -58,15 +63,25 @@ export function exportMetadata(
   state: CanvasState,
   shapeExpander: ShapeExpanderService,
   schema: SchemaService,
-  language: string
+  language: string,
+  recordKeys: Set<string>
 ): Record<string, any> {
   const allFields = [...state.coreFields, ...state.specialFields];
-  
+
+  // Only keys of the record's own fields (W-L1): the map also holds fields of
+  // a type switched away from, dotted subfield ids of edits and keys of an
+  // import no field knows - they would end up in ccm:oeh_extendedData.
+  // `recordKeys` adds the fields of the schemas without a form field (ask_user false).
+  const ownKeys = new Set(recordKeys);
+  for (const field of allFields) {
+    if (!field.parentFieldId) ownKeys.add(field.fieldId);
+  }
+
   // Reconstruct complex objects from subfields
   // Also strip internal meta-keys (_origins, _source_text) to prevent duplication
   const exportMetadata: Record<string, any> = {};
   for (const [key, value] of Object.entries(state.metadata)) {
-    if (!key.startsWith('_')) {
+    if (!key.startsWith('_') && ownKeys.has(key)) {
       exportMetadata[key] = value;
     }
   }

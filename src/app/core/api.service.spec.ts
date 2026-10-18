@@ -37,3 +37,18 @@ describe('ApiService.generate', () => {
     expect(response.processing.status).toBe('success');
   });
 });
+
+/** Final audit 18.10. (S-2): host-set context/version went into the path unescaped. */
+describe('ApiService.getSchema', () => {
+  it('escapes context, version and file name in the path', async () => {
+    const get = jasmine.createSpy('get').and.returnValue(of({ fields: [] }));
+    const logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} } as any;
+    const api = new ApiService({ get } as any, logger);
+    api.setApiUrl('https://agent.example');
+
+    await api.getSchema('../admin?x=1', 'v1#2', 'event.json');
+
+    expect(get.calls.mostRecent().args[0])
+      .toBe('https://agent.example/info/schema/..%2Fadmin%3Fx%3D1/v1%232/event.json');
+  });
+});

@@ -112,6 +112,17 @@ describe('CanvasService.applyValueToField', () => {
     expect(result.isParent).toBe(true);
   });
 
+  // Final audit 18.10. (L-8): an empty object list counted as a filled field.
+  for (const empty of [[], {}]) {
+    it(`counts an object field holding ${JSON.stringify(empty)} as empty`, () => {
+      expect(apply(field('schema:contactPoint'), empty).status).toBe(FieldStatus.EMPTY);
+    });
+  }
+
+  it('counts an object field with a value as filled', () => {
+    expect(apply(field('schema:contactPoint'), [{ email: 'a@b.de' }]).status).toBe(FieldStatus.FILLED);
+  });
+
   it('keeps a correctly structured value', () => {
     const result = apply(field('schema:contactPoint'), [
       { contactType: 'Besucherservice', email: 'spectrum@technikmuseum.berlin' },

@@ -13,10 +13,17 @@ import { I18nService } from './i18n.service';
 import { LoggerService } from './logger.service';
 import { ShapeExpanderService } from './shape-expander.service';
 import { declaresObjects, objectKeyFor } from './object-shape';
-import { InstanceRegistry, RunInput, RunOutcome, SharedInstanceState } from './instance-registry';
+import { CachedValues, InstanceRegistry, RunInput, RunOutcome, SharedInstanceState } from './instance-registry';
 import { getCountableFields, groupFields, isValueFilled, sameValue } from './canvas-fields';
 import { assertUsable, describeFailure, generationWarning } from './canvas-feedback';
-import { collectMetadata, exportMetadata } from './canvas-metadata';
+import { collectMetadata, exportMetadata, withoutInternalKeys } from './canvas-metadata';
+
+/** Label, position and icon of the groups of one schema, by group id. */
+interface GroupInfo {
+  labels: Map<string, string>;
+  order: Map<string, number>;
+  icons: Map<string, string>;
+}
 
 /**
  * Canvas Service - Simplified State Management
@@ -34,7 +41,7 @@ export class CanvasService {
   private stateProxy$: BehaviorSubject<BehaviorSubject<CanvasState>>;
 
   /** Cache field values per content type so switching back restores them */
-  private fieldValueCache: Map<string, { values: Record<string, any>, origins: Record<string, boolean> }>;
+  private fieldValueCache: Map<string, CachedValues>;
 
   private _instanceId = 'default';
 
@@ -92,6 +99,9 @@ export class CanvasService {
       runInput: null,
       takeovers: new Map(),
       pendingTakeover: null,
+      importedValues: null,
+      schemaFieldIds: new Map(),
+      importedKeys: new Set(),
     };
     this.logger.info('CanvasService initialized (API mode)');
   }
@@ -332,15 +342,7 @@ export class CanvasService {
         if (run !== this.generation) return;
       }
       
-      // Get label and icon for detected content type
-      const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === response.metadataset);
-      
-      contentTypeUpdate = {
-        detectedContentType: response.metadataset,
-        selectedContentType: response.metadataset,
-        contentTypeLabel: concept?.label || response.metadataset.replace('.json', ''),
-        contentTypeIcon: concept?.icon || 'category'
-      };
+      contentTypeUpdate = this.contentTypeState(response.metadataset);
     }
 
     // Determine current fields (use newly prepared special fields if schema changed).
@@ -356,13 +358,7 @@ export class CanvasService {
     // What the editor changed while the request was out wins (L-01).
     const applyResult = (field: CanvasFieldState): CanvasFieldState => {
       const edited = this.editsDuringRun.get(field.fieldId);
-      if (edited) return this.applyEdit(field, edited);
-      const value = metadata[field.fieldId];
-      if (value !== undefined && value !== null) {
-        const isAi = origins ? origins[field.fieldId] !== 'user' : true;
-        return this.applyValueToField(field, value, isAi);
-      }
-      return field;
+      return edited ? this.applyEdit(field, edited) : this.withValueFrom(field, metadata, origins);
     };
     const updatedCoreFields = currentCoreFields.map(applyResult);
     const updatedSpecialFields = currentSpecialFields.map(applyResult);
@@ -371,14 +367,8 @@ export class CanvasService {
     const visibleFields = getCountableFields(allFields);
     const filledFields = visibleFields.filter(f => f.status === FieldStatus.FILLED).length;
 
-    // Strip internal meta-keys (e.g. _origins, _source_text) from metadata
-    // to prevent duplication when exporting later
-    const cleanMetadata: Record<string, any> = {};
-    for (const [key, value] of Object.entries(metadata)) {
-      if (!key.startsWith('_')) {
-        cleanMetadata[key] = value;
-      }
-    }
+    // Without internal meta-keys (_origins, _source_text): not exported twice
+    const cleanMetadata = withoutInternalKeys(metadata);
     // Only edits of fields the form still has: a field of the type the answer
     // replaced would be exported under the new one.
     const fieldIds = new Set(allFields.map(f => f.fieldId));
@@ -426,14 +416,7 @@ export class CanvasService {
 
     const groups = await this.schema.getGroups('core.json');
     if (run !== this.generation) return;
-    const language = this.schema.getActiveLanguage();
-    const groupMap = new Map((groups || []).map((g: any) => [g.id, this.schema.localizeString(g.label, language)]));
-    const groupOrderMap = new Map(groups?.map((g: any, index: number) => [g.id, index]) || []);
-    const groupIconMap = new Map((groups || []).map((g: any) => [g.id, g.icon || '']));
-    
-    const coreFields: CanvasFieldState[] = coreSchemaFields
-      .filter((field: any) => field.system?.ask_user !== false)
-      .map((field: any) => this.createFieldState(field, 'Core', groupMap, groupOrderMap, groupIconMap, language));
+    const coreFields = this.buildFields(coreSchemaFields, groups, 'Core', 'core.json');
 
     const fieldGroups = groupFields(coreFields, this.getCurrentState().fieldGroups);
     const visibleFields = getCountableFields(coreFields);
@@ -451,6 +434,8 @@ export class CanvasService {
    * Returns the prepared field array, or null if schema couldn't be loaded.
    */
   private async prepareSpecialFields(schemaFile: string, run: number): Promise<CanvasFieldState[] | null> {
+    // The core schema is no type of its own: its fields are the core fields (W-L6).
+    if (schemaFile === 'core.json') return [];
     let specialSchemaFields: any[] | null;
     try {
       specialSchemaFields = await this.schema.getFields(schemaFile);
@@ -474,17 +459,24 @@ export class CanvasService {
 
     const groups = await this.schema.getGroups(schemaFile);
     if (run !== this.generation) return null;
-    const language = this.schema.getActiveLanguage();
-    const groupMap = new Map((groups || []).map((g: any) => [g.id, this.schema.localizeString(g.label, language)]));
-    const groupOrderMap = new Map(groups?.map((g: any, index: number) => [g.id, index]) || []);
-    const groupIconMap = new Map((groups || []).map((g: any) => [g.id, g.icon || '']));
-    
+    // Keys the groups of the special fields (canvas-fields.ts); the badge shows the type label.
     const schemaName = schemaFile.replace('.json', '')
       .split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-    
-    return specialSchemaFields
+    return this.buildFields(specialSchemaFields, groups, schemaName, schemaFile);
+  }
+
+  /** The form fields of a schema (those the editor is asked for), in the active language. */
+  private buildFields(schemaFields: any[], groups: any[], schemaName: string, schemaFile: string): CanvasFieldState[] {
+    this.shared.schemaFieldIds.set(schemaFile, new Set(schemaFields.map((field: any) => field.id)));
+    const language = this.schema.getActiveLanguage();
+    const groupInfo: GroupInfo = {
+      labels: new Map((groups || []).map((g: any) => [g.id, this.schema.localizeString(g.label, language)])),
+      order: new Map((groups || []).map((g: any, index: number) => [g.id, index])),
+      icons: new Map((groups || []).map((g: any) => [g.id, g.icon || ''])),
+    };
+    return schemaFields
       .filter((field: any) => field.system?.ask_user !== false)
-      .map((field: any) => this.createFieldState(field, schemaName, groupMap, groupOrderMap, groupIconMap, language));
+      .map((field: any) => ({ ...this.createFieldState(field, schemaName, groupInfo, language), schemaFile }));
   }
 
   private async loadSpecialSchema(schemaFile: string, run: number): Promise<void> {
@@ -503,20 +495,13 @@ export class CanvasService {
     });
   }
 
-  private createFieldState(
-    field: any, 
-    schemaName: string, 
-    groupMap: Map<string, string>, 
-    groupOrderMap: Map<string, number>,
-    groupIconMap: Map<string, string>,
-    language: string
-  ): CanvasFieldState {
+  private createFieldState(field: any, schemaName: string, groups: GroupInfo, language: string): CanvasFieldState {
     const groupId = field.group || 'other';
-    const groupLabel = this.schema.localizeString(field.group_label, language) 
-      || groupMap.get(groupId) 
+    const groupLabel = this.schema.localizeString(field.group_label, language)
+      || groups.labels.get(groupId)
       || this.schema.getFallbackGroupLabel(language);
-    const groupOrder = groupOrderMap.get(groupId) ?? 999;
-    const groupIcon = groupIconMap.get(groupId) || '';
+    const groupOrder = groups.order.get(groupId) ?? 999;
+    const groupIcon = groups.icons.get(groupId) || '';
     const localizedField = this.schema.localizeFieldFull(field, language);
 
     return {
@@ -700,12 +685,16 @@ export class CanvasService {
 
   // ===== Content Type Selection =====
 
-  /** Switch to a content type; false if another action overtook it meanwhile. */
-  async selectContentType(schemaFileOrUri: string): Promise<boolean> {
+  /**
+   * Switch to a content type; false if another action overtook it meanwhile.
+   * `onApplied` is called once the type and its fields are in the form, before
+   * a re-run for it (which can take as long as a /generate call).
+   */
+  async selectContentType(schemaFileOrUri: string, onApplied?: () => void): Promise<boolean> {
     // A choice still loading its schema has already ended the spinner of the
     // run it cut short; one made meanwhile takes that interruption over.
     const interrupted = this.getCurrentState().isExtracting ? this.generation : this.shared.pendingTakeover;
-    const choice = this.chooseContentType(schemaFileOrUri, interrupted !== null);
+    const choice = this.chooseContentType(schemaFileOrUri, interrupted !== null, onApplied);
     // Registered before the first await: the replaced run looks it up as soon
     // as it notices it was overtaken (#24).
     if (interrupted !== null) {
@@ -726,7 +715,8 @@ export class CanvasService {
 
   private async chooseContentType(
     schemaFileOrUri: string,
-    interruptedExtraction: boolean
+    interruptedExtraction: boolean,
+    onApplied?: () => void
   ): Promise<{ current: boolean; rerun: RunOutcome | null }> {
     // Resolve URI to schema filename if needed
     const schemaFile = this.schema.resolveSchemaFileOrUri(schemaFileOrUri);
@@ -750,20 +740,15 @@ export class CanvasService {
     // Restore cached values for the new content type (if any)
     this.restoreCachedFieldValues(schemaFile);
     
-    const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === schemaFile);
-    
-    this.updateState({
-      selectedContentType: schemaFile,
-      detectedContentType: schemaFile,
-      contentTypeLabel: concept?.label || schemaFile.replace('.json', ''),
-      contentTypeIcon: concept?.icon || 'category'
-    });
+    this.updateState(this.contentTypeState(schemaFile));
+    onApplied?.();
     
     // If there is a source and no cached data for this type, regenerate - also
     // when the choice cut an extraction short: its request stands, for this
     // type, whatever is cached (the cache does not hold that run's result).
     const hasExistingData = state.filledFields > 0;
-    const cached = this.fieldValueCache.has(schemaFile);
+    // An entry without values (all emptied) counts as nothing cached, as before.
+    const cached = Object.keys(this.fieldValueCache.get(schemaFile)?.values ?? {}).length > 0;
     if (this.rerunInput() && (interruptedExtraction || (hasExistingData && !cached))) {
       this.logger.info(`Content type changed to ${schemaFile}, regenerating...`);
       const rerun = await this.regenerateWithContentType(schemaFile);
@@ -793,14 +778,15 @@ export class CanvasService {
       }
     }
     
-    if (Object.keys(values).length > 0) {
-      this.fieldValueCache.set(schemaFile, { values, origins });
-      this.logger.info(`Cached ${Object.keys(values).length} field values for ${schemaFile}`);
-    }
+    // Also when nothing is filled: an older entry would bring back what the
+    // editor emptied (W-L5).
+    this.fieldValueCache.set(schemaFile, { values, origins });
+    this.logger.info(`Cached ${Object.keys(values).length} field values for ${schemaFile}`);
   }
 
+  /** Values cached for the type, otherwise those of an import without a type of its own (F2). */
   private restoreCachedFieldValues(schemaFile: string): void {
-    const cached = this.fieldValueCache.get(schemaFile);
+    const cached = this.fieldValueCache.get(schemaFile) ?? this.shared.importedValues;
     if (!cached) return;
     
     const state = this.getCurrentState();
@@ -903,12 +889,7 @@ export class CanvasService {
     const run = this.supersede();
     this.shared.runInput = null; // the loaded form's source is its own text, not the last run's
     this.forgetPreviousForm();
-    
-    // Resolve URI to schema filename if needed
-    if (schemaFile) {
-      schemaFile = this.schema.resolveSchemaFileOrUri(schemaFile);
-    }
-    
+
     // Initialize core fields unless explicitly skipped
     if (!options?.skipCore) {
       try {
@@ -919,61 +900,34 @@ export class CanvasService {
       if (run !== this.generation) return false;
     }
 
+    // Resolve URI to schema filename if needed - after the core schema, which
+    // holds the URIs (an import at page start comes before it was loaded).
+    if (schemaFile) {
+      schemaFile = this.schema.resolveSchemaFileOrUri(schemaFile);
+    }
+
     if (schemaFile && schemaFile !== 'core.json') {
       await this.loadSpecialSchema(schemaFile, run);
       if (run !== this.generation) return false;
 
       // Set content type label and icon so UI (floating buttons) reflects the loaded type
-      const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === schemaFile);
-      this.updateState({
-        detectedContentType: schemaFile,
-        selectedContentType: schemaFile,
-        contentTypeLabel: concept?.label || schemaFile.replace('.json', ''),
-        contentTypeIcon: concept?.icon || 'category'
-      });
+      this.updateState(this.contentTypeState(schemaFile));
     } else {
       // No type of its own: the previous type's fields would be exported with it.
-      this.updateState({
-        specialFields: [],
-        detectedContentType: null,
-        selectedContentType: null,
-        contentTypeLabel: undefined,
-        contentTypeIcon: undefined
-      });
+      this.updateState({ specialFields: [], ...this.contentTypeState(null) });
     }
 
     const state = this.getCurrentState();
     
-    const updatedCoreFields = state.coreFields.map(field => {
-      const value = metadata[field.fieldId];
-      if (value !== undefined && value !== null) {
-        const isAi = origins ? origins[field.fieldId] !== 'user' : true;
-        return this.applyValueToField(field, value, isAi);
-      }
-      return field;
-    });
-
-    const updatedSpecialFields = state.specialFields.map(field => {
-      const value = metadata[field.fieldId];
-      if (value !== undefined && value !== null) {
-        const isAi = origins ? origins[field.fieldId] !== 'user' : true;
-        return this.applyValueToField(field, value, isAi);
-      }
-      return field;
-    });
+    const updatedCoreFields = state.coreFields.map(field => this.withValueFrom(field, metadata, origins));
+    const updatedSpecialFields = state.specialFields.map(field => this.withValueFrom(field, metadata, origins));
 
     const allFields = [...updatedCoreFields, ...updatedSpecialFields];
     const visibleFields = getCountableFields(allFields);
     const filledFields = visibleFields.filter(f => f.status === FieldStatus.FILLED).length;
 
-    // Strip internal meta-keys (_origins, _source_text) from metadata
-    // to prevent duplication when exporting later
-    const cleanMetadata: Record<string, any> = {};
-    for (const [key, value] of Object.entries(metadata)) {
-      if (!key.startsWith('_')) {
-        cleanMetadata[key] = value;
-      }
-    }
+    // Without internal meta-keys (_origins, _source_text): not exported twice
+    const cleanMetadata = withoutInternalKeys(metadata);
 
     this.updateState({
       coreFields: updatedCoreFields,
@@ -992,18 +946,49 @@ export class CanvasService {
     return true;
   }
 
+  /** The state that names a type; core.json and none mean no type of its own. */
+  private contentTypeState(schemaFile: string | null): Partial<CanvasState> {
+    if (!schemaFile || schemaFile === 'core.json') {
+      return { detectedContentType: null, selectedContentType: null, contentTypeLabel: undefined, contentTypeIcon: undefined };
+    }
+    const concept = this.schema.getContentTypeConcepts().find(c => c.schema_file === schemaFile);
+    return {
+      detectedContentType: schemaFile,
+      selectedContentType: schemaFile,
+      contentTypeLabel: concept?.label || schemaFile.replace('.json', ''),
+      contentTypeIcon: concept?.icon || 'category'
+    };
+  }
+
   // ===== Export Metadata =====
 
-  getMetadata(): Record<string, any> {
-    return this.getCurrentState().metadata;
-  }
-
+  /**
+   * The record for the events (metadataChange, metadataSubmit) and the JSON
+   * export: the form's fields plus the keys an import brought that the form
+   * has no field for, as in 2.1.1.
+   */
   getMetadataForExport(): Record<string, any> {
-    return exportMetadata(this.getCurrentState(), this.shapeExpander, this.schema, this.i18n.currentLang);
+    const state = this.getCurrentState();
+    const keys = this.recordFieldIds(state);
+    for (const key of this.shared.importedKeys) keys.add(key);
+    return exportMetadata(state, this.shapeExpander, this.schema, this.i18n.currentLang, keys);
   }
 
+  /**
+   * The record for the upload: only the fields of the core schema and the
+   * selected type - it is written to ccm:oeh_extendedData (W-L1).
+   */
   getMetadataForRepository(): Record<string, any> {
-    return this.getMetadataForExport();
+    const state = this.getCurrentState();
+    return exportMetadata(state, this.shapeExpander, this.schema, this.i18n.currentLang, this.recordFieldIds(state));
+  }
+
+  /** Ids of all fields of the core schema and the selected type, as built for this form. */
+  private recordFieldIds(state: CanvasState): Set<string> {
+    const ids = new Set(this.shared.schemaFieldIds.get('core.json'));
+    const type = state.selectedContentType;
+    for (const id of (type && this.shared.schemaFieldIds.get(type)) || []) ids.add(id);
+    return ids;
   }
 
   // ===== Async Screenshot Capture =====
@@ -1053,6 +1038,8 @@ export class CanvasService {
   /** What belonged to the form being replaced: values cached per type, run takeovers. */
   private forgetPreviousForm(): void {
     this.fieldValueCache.clear();
+    this.shared.importedValues = null;
+    this.shared.importedKeys = new Set();
     this.shared.takeovers.clear(); // runs it replaces are no success of theirs
     this.shared.pendingTakeover = null;
   }
@@ -1093,8 +1080,8 @@ export class CanvasService {
 
   // ===== Content Type Change =====
 
-  async changeContentTypeManually(schemaFileOrUri: string, label?: string, icon?: string): Promise<void> {
-    if (!(await this.selectContentType(schemaFileOrUri))) return;
+  async changeContentTypeManually(schemaFileOrUri: string, label?: string, icon?: string, onApplied?: () => void): Promise<void> {
+    if (!(await this.selectContentType(schemaFileOrUri, onApplied))) return;
     if (label) {
       this.updateState({ contentTypeLabel: label });
     }
@@ -1105,14 +1092,25 @@ export class CanvasService {
 
   // ===== JSON Import =====
 
-  async importJsonData(data: Record<string, any>): Promise<void> {
+  /**
+   * Replaces the form with imported metadata. Without a metadataset of its own
+   * the import takes `hostContentType`, the type the host page set (content-type),
+   * as in 2.1.1 (F2); without that it has no type - the previous page's type
+   * and its fields are not kept. Its values then wait for a type chosen later.
+   */
+  async importJsonData(data: Record<string, any>, hostContentType?: string | null): Promise<void> {
     this.logger.info('Importing JSON data');
     const metadata = data['metadata'] || data;
-    const schemaFile = data['metadataset'] || data['metadataset_uri'] || data['schemaFile'];
+    const ownSchemaFile = data['metadataset'] || data['metadataset_uri'] || data['schemaFile'];
     // Read _origins from top level (new format) or from inside metadata (old format)
     const origins: Record<string, 'ai' | 'user'> | undefined =
       data['_origins'] || metadata['_origins'];
-    if (!(await this.loadMetadata(metadata, schemaFile, origins))) return;
+    if (!(await this.loadMetadata(metadata, ownSchemaFile || hostContentType || undefined, origins))) return;
+    if (!ownSchemaFile) {
+      this.shared.importedValues = importedValues(metadata, origins);
+    }
+    const fieldIds = this.recordFieldIds(this.getCurrentState());
+    this.shared.importedKeys = new Set(Object.keys(withoutInternalKeys(metadata)).filter(key => !fieldIds.has(key)));
 
     // Source text and preview image of the import (top level or inside metadata
     // for backward compat). Without them, none: the previous page's text would
@@ -1128,11 +1126,18 @@ export class CanvasService {
 
   // ===== Helper Methods =====
 
+  /** The field with its value from `metadata`, if there is one; from the AI unless the origins say user. */
+  private withValueFrom(field: CanvasFieldState, metadata: Record<string, any>, origins?: Record<string, string>): CanvasFieldState {
+    const value = metadata[field.fieldId];
+    if (value === undefined || value === null) return field;
+    return this.applyValueToField(field, value, origins ? origins[field.fieldId] !== 'user' : true);
+  }
+
   /**
    * Apply a value to a field, expanding complex objects into subfields when shape is defined
    */
   private applyValueToField(field: CanvasFieldState, value: any, isAiGenerated = true): CanvasFieldState {
-    const schemaFieldDef = this.schema.getFieldById(field.fieldId);
+    const schemaFieldDef = this.schema.getFieldById(field.fieldId, field.schemaFile);
     // The SCHEMA decides whether this is an object field — never the value.
     // Deciding from the value meant a string arrived, no subfields were built,
     // `isParent` stayed false, and field.component.html rendered a plain text
@@ -1147,7 +1152,8 @@ export class CanvasService {
       return {
         ...field,
         value: value,
-        status: FieldStatus.FILLED,
+        // [] or {} is no value (L-8): the field counted as filled and in the progress.
+        status: isValueFilled(value) ? FieldStatus.FILLED : FieldStatus.EMPTY,
         confidence: 0.9,
         isAiGenerated,
         isParent: taggedSubFields.length > 0,
@@ -1188,4 +1194,16 @@ export class CanvasService {
   getContentTypeConcepts(): any[] {
     return this.schema.getContentTypeConcepts();
   }
+}
+
+/** The values of an import (without internal keys) with whether each came from the AI. */
+function importedValues(metadata: Record<string, any>, origins?: Record<string, 'ai' | 'user'>): CachedValues {
+  const values: Record<string, any> = {};
+  const fromAi: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(withoutInternalKeys(metadata))) {
+    if (value === undefined || value === null) continue;
+    values[key] = value;
+    fromAi[key] = origins ? origins[key] !== 'user' : true;
+  }
+  return { values, origins: fromAi };
 }

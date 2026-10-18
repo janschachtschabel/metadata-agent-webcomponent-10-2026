@@ -137,7 +137,8 @@ sollten daher so bleiben; wer sie ändert, setzt `api-url` ausdrücklich.
 ```javascript
 const canvas = document.querySelector('metadata-agent-canvas');
 
-// Metadaten vorab befuellen
+// Metadaten vorab befuellen. Ohne `metadataset` gilt der Inhaltstyp, den die
+// Seite gesetzt hat (content-type / contentType, auch danach gesetzt) - wie in 2.1.1.
 canvas.metadataInput = { 'cclom:title': ['Mein Titel'], 'cclom:general_keyword': ['Mathe', 'Geometrie'] };
 
 // Layout zur Laufzeit aendern
@@ -147,6 +148,9 @@ canvas.inputMode = 'url';
 
 // Inhaltstyp von aussen setzen
 canvas.contentType = 'event.json';
+
+// Version des geladenen Widgets
+console.log(customElements.get('metadata-agent-canvas').widgetVersion);
 
 // Events abhoeren
 canvas.addEventListener('metadataChange', (e) => console.log(e.detail));
@@ -568,8 +572,8 @@ Jeder Wert kann per Attribut ueberschrieben werden.
 // Inhaltstyp per JavaScript umschalten
 const canvas = document.querySelector('metadata-agent-canvas');
 canvas.contentType = 'event.json';       // Veranstaltung
-canvas.contentType = 'source.json';      // Quelle
-canvas.contentType = 'core.json';        // Allgemein
+canvas.contentType = 'organization.json'; // Organisation
+canvas.contentType = 'core.json';        // Allgemein: nur die Basisfelder, kein Inhaltstyp
 ```
 
 ### Minimal: Nur Kernfelder, kein Footer
@@ -595,7 +599,9 @@ canvas.addEventListener('metadataChange', (e) => {
   // e.detail = {
   //   contextName, schemaVersion, metadataset, metadataset_uri,
   //   language, exportedAt,
-  //   metadata: { "cclom:title": [...], ... },   // nur echte Felder
+  //   metadata: { "cclom:title": [...], ... },   // Felder von Basisschema und gewaehltem Typ,
+  //                                               // dazu Schluessel eines Imports ohne Feld (wie 2.1.1);
+  //                                               // der Upload enthaelt nur die Felder der Schemata
   //   _origins: { "cclom:title": "ai", ... },     // nur Top-Level (kein Duplikat in metadata)
   //   _source_text: "...",                         // Rohtext (falls vorhanden)
   //   preview_image_url: "data:image/png;base64,..." // Screenshot (falls vorhanden)
@@ -633,7 +639,7 @@ Beim Upload ins Repository werden automatisch drei zusaetzliche Felder geschrieb
 | Feld | Inhalt | Quelle |
 |------|--------|--------|
 | `ccm:oeh_extendedType` | URI des Inhaltstyps | Vocabulary-URI aus `core.json` (z.B. `http://w3id.org/openeduhub/vocabs/contentTypes/event`) |
-| `ccm:oeh_extendedData` | Vollstaendiges Metadaten-JSON | Alle Metadaten-Felder als JSON-String |
+| `ccm:oeh_extendedData` | Vollstaendiges Metadaten-JSON | Die Felder von Basisschema und gewaehltem Typ als JSON-String (ohne Schluessel eines Imports, die kein Schema kennt) |
 | `ccm:oeh_extendedText` | Rohtext vor Extraktion | `userText` aus dem Eingabefeld (Text, extrahierter Seiteninhalt bei URL, etc.) |
 
 ### Datenfluss
@@ -646,38 +652,10 @@ Beim Upload ins Repository werden automatisch drei zusaetzliche Felder geschrieb
 
 ## URL Query Parameter (Standalone-Modus)
 
-Im Browser koennen alle Optionen per URL gesetzt werden:
-
-```
-http://localhost:4200/?layout=dialog&showInputArea=true&showStatusBar=true&inputMode=url&readonly=false&columns=2
-```
-
-| Parameter | Beschreibung |
-|-----------|-------------|
-| `apiUrl` | API-URL (ueberschreibt environment.ts) |
-| `context` / `contextName` | Schema-Kontext |
-| `version` / `schemaVersion` | Schema-Version |
-| `layout` | Layout-Name oder Alias |
-| `columns` | Spaltenanzahl (1-4) |
-| `readonly` | Nur-Lesen-Modus |
-| `borderless` | Rahmenloser Modus |
-| `inputMode` | Eingabemodus: `text`, `url`, `nodeId` |
-| `showInputArea` | Texteingabefeld anzeigen |
-| `showStatusBar` | Statusleiste anzeigen |
-| `showUploadButton` | Upload-Button anzeigen |
-| `showFloatingControls` / `controls` | Schwebende Buttons (Master-Toggle) |
-| `showContentType` | Content-Type Split-Button |
-| `showSaveButton` | Save/Submit-Button |
-| `showJsonLoader` | JSON-Datei-Loader |
-| `showLanguageSwitcher` | Sprachwechsel-Pill |
-| `showResetButton` | Reset-Button |
-| `showCoreFields` | Kernfelder |
-| `showSpecialFields` | Spezialfelder |
-| `showFooter` | Footer |
-| `showFieldActions` | Feld-Aktionen |
-| `showContentTypeOnly` | Nur Content-Type |
-| `highlightAi` | KI-Felder violett hervorheben |
-| `flatGroups` | Feldgruppen pro Schema zusammenfassen |
+Nur die eigene Standalone-Seite liest Parameter aus der URL, z. B.
+`?layout=dialog&columns=2&inputMode=url`. `apiUrl` und `dataUrl` gelten aus
+Sicherheitsgruenden nur auf `localhost`. Vollstaendige Liste mit Standardwerten:
+[docs/URL-PARAMETERS.md](docs/URL-PARAMETERS.md).
 
 ---
 

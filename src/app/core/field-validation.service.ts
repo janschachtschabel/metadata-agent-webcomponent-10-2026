@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { I18nService } from './i18n.service';
 import { toObjectShape } from './object-shape';
+import { isoDate, parseDate, parseDateTime } from './date-parsing';
 
 /**
  * Validation Result
@@ -102,7 +103,10 @@ export class FieldValidationService {
       return this.validateVocabulary(value, config.vocabulary);
     }
     
-    // Validate by datatype
+    return this.validateByDatatype(value, config);
+  }
+
+  private validateByDatatype(value: unknown, config: FieldValidationConfig): ValidationResult {
     switch (config.datatype) {
       case 'boolean':
         return this.validateBoolean(value);
@@ -177,6 +181,13 @@ export class FieldValidationService {
     // If vocabulary exists, validate against it
     if (config.vocabulary) {
       return this.validateVocabulary(value, config.vocabulary);
+    }
+
+    // Items of a list of dates, addresses, numbers... as what they are (W-L4):
+    // a list of URIs checked every item as plain text.
+    const itemDatatype = config.itemDatatype || config.datatype;
+    if (SCALAR_ITEM_DATATYPES.includes(itemDatatype)) {
+      return this.validateByDatatype(value, { ...config, datatype: itemDatatype, multiple: false });
     }
 
     // Otherwise validate as string
@@ -339,16 +350,8 @@ export class FieldValidationService {
    * Validate number
    */
   private validateNumber(value: unknown, config: FieldValidationConfig): ValidationResult {
-    let num: number;
-    
-    if (typeof value === 'number') {
-      num = value;
-    } else {
-      const str = String(value).replace(',', '.').trim();
-      num = config.datatype === 'integer' ? parseInt(str, 10) : parseFloat(str);
-    }
-    
-    if (isNaN(num)) {
+    const num = typeof value === 'number' ? value : parseNumber(String(value));
+    if (num === null || isNaN(num) || (config.datatype === 'integer' && !Number.isInteger(num))) {
       return { valid: false, error: this.i18n.instant('VALIDATION.INVALID_NUMBER') };
     }
     
@@ -370,67 +373,37 @@ export class FieldValidationService {
   }
   
   /**
-   * Validate date (YYYY-MM-DD)
+   * Validate a date: ISO, DD.MM.YYYY or DD/MM/YYYY, and only a day that exists
+   * (W-L3: no Date.parse guessing, no roll-over, no day shift via toISOString).
    */
   private validateDate(value: unknown): ValidationResult {
-    const str = String(value).trim();
-    
-    // ISO date format
-    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (isoMatch) {
-      const date = new Date(str);
-      if (!isNaN(date.getTime())) {
-        return { valid: true, normalizedValue: str };
-      }
-    }
-    
-    // German format DD.MM.YYYY
-    const deMatch = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-    if (deMatch) {
-      const [_, day, month, year] = deMatch;
-      const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      const date = new Date(isoDate);
-      if (!isNaN(date.getTime())) {
-        return { valid: true, normalizedValue: isoDate };
-      }
-    }
-    
-    // Try native parsing
-    const parsed = new Date(str);
-    if (!isNaN(parsed.getTime())) {
-      const iso = parsed.toISOString().split('T')[0];
-      return { valid: true, normalizedValue: iso };
-    }
-    
-    return { valid: false, error: this.i18n.instant('VALIDATION.INVALID_DATE') };
+    const date = parseDate(String(value));
+    return date
+      ? { valid: true, normalizedValue: isoDate(date) }
+      : { valid: false, error: this.i18n.instant('VALIDATION.INVALID_DATE') };
   }
   
   /**
-   * Validate datetime (ISO 8601)
+   * Validate a date-time: ISO (kept as it is, also with seconds or offset),
+   * an ISO date (00:00:00), or a typed "DD.MM.YYYY HH:MM" - with a real day
+   * and a time in range.
    */
   private validateDateTime(value: unknown): ValidationResult {
     const str = String(value).trim();
-    
-    // Already ISO format
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(str)) {
-      const date = new Date(str);
-      if (!isNaN(date.getTime())) {
-        return { valid: true, normalizedValue: str };
-      }
+    const iso = str.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/);
+    if (iso) {
+      const inRange = parseDate(iso[1]) && +iso[2] <= 23 && +iso[3] <= 59 && (iso[4] === undefined || +iso[4] <= 59);
+      return inRange
+        ? { valid: true, normalizedValue: str }
+        : { valid: false, error: this.i18n.instant('VALIDATION.INVALID_DATETIME') };
     }
-    
-    // Date only - append T00:00
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str) && parseDate(str)) {
       return { valid: true, normalizedValue: `${str}T00:00:00` };
     }
-    
-    // Try native parsing
-    const parsed = new Date(str);
-    if (!isNaN(parsed.getTime())) {
-      return { valid: true, normalizedValue: parsed.toISOString() };
-    }
-    
-    return { valid: false, error: this.i18n.instant('VALIDATION.INVALID_DATETIME') };
+    const typed = parseDateTime(str);
+    return typed
+      ? { valid: true, normalizedValue: typed }
+      : { valid: false, error: this.i18n.instant('VALIDATION.INVALID_DATETIME') };
   }
   
   /**
@@ -789,4 +762,23 @@ export class FieldValidationService {
       .slice(0, limit)
       .map(m => m.label);
   }
+}
+
+/** Item datatypes a list is checked by, item by item (others as text). */
+const SCALAR_ITEM_DATATYPES = ['boolean', 'number', 'integer', 'date', 'datetime', 'time', 'url', 'uri', 'duration'];
+
+/**
+ * A number as typed (L-9): "1234.5" (what a number input gives), German
+ * "1.234,5" / "1.234.567" / "0,75". Null for anything else - parseFloat read
+ * "12abc" as 12 and "1.234,5" as 1.234.
+ */
+function parseNumber(text: string): number | null {
+  const str = text.trim();
+  if (/^[+-]?\d+(\.\d+)?$/.test(str)) return Number(str);
+  if (/^[+-]?\d+,\d+$/.test(str)) return Number(str.replace(',', '.'));
+  const german = str.match(/^([+-]?\d{1,3}(?:\.\d{3})+)(?:,(\d+))?$/);
+  if (german && (german[2] !== undefined || (german[1].match(/\./g) || []).length > 1)) {
+    return Number(german[1].replace(/\./g, '') + (german[2] !== undefined ? `.${german[2]}` : ''));
+  }
+  return null;
 }
