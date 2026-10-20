@@ -51,14 +51,19 @@ Die Komponente wird als Angular Custom Element (`<metadata-agent-canvas>`) ausge
 
 ### Erforderliche Schriften
 
-Die Webkomponente nutzt **Roboto** (300/400/500) als Textschrift sowie **Material Icons** (filled + outlined). Die Schriften werden selbst ausgeliefert — es gibt keinen Aufruf von Google Fonts oder einem anderen externen CDN. `styles.css` enthält die `@font-face`-Regeln; die Dateien liegen daneben unter `widget/dist/fonts/`. Es genügt daher, das Stylesheet einzubinden:
+Die Webkomponente nutzt **Roboto** (300/400/500) als Textschrift sowie **Material Icons**. Die Schriften werden selbst ausgeliefert — es gibt keinen Aufruf von Google Fonts oder einem anderen externen CDN. `styles.css` enthält die `@font-face`-Regeln; die Dateien liegen daneben unter `widget/dist/fonts/`. Es genügt daher, das Stylesheet einzubinden:
 
 ```html
 <link rel="stylesheet" href="https://DEINE-API-URL/widget/dist/styles.css">
 ```
 
+Ohne `styles.css` (z. B. in edu-sharing, das nur `runtime.js`, `polyfills.js`
+und `main.js` lädt) greifen Schrift und Icons der Host-Seite. Symbole, die edu-sharings
+Icon-Schrift (Material Symbols) nicht kennt, sind deshalb eingebettete SVGs: das
+Entfernen-Symbol der Chips und `info_outline` (Leerzustand, Info-Meldungen).
+
 Das Stylesheet bleibt beim Widget: Schriften registriert es unter eigenen Namen
-(`Metadata Agent Roboto`, `Metadata Agent Material Icons …`), und Material-Theme,
+(`Metadata Agent Roboto`, `Metadata Agent Material Icons`), und Material-Theme,
 Schrift und Icon-Klassen gelten nur innerhalb von `<metadata-agent-canvas>` und
 des eigenen Overlay-Containers (Klasse `metadata-agent-overlays`, für Menüs,
 Datums- und Zeitwähler). Eine Host-Seite, die selbst Angular Material nutzt,
@@ -131,6 +136,39 @@ sollten daher so bleiben; wer sie ändert, setzt `api-url` ausdrücklich.
 ```
 
 > **Hinweis:** `metadatenpruefdialog` ist weiterhin als Alias fuer `clean` nutzbar.
+
+### Konfiguration vor dem ersten Rendern
+
+Das Widget zeichnet sich, sobald es im DOM hängt und registriert ist, mit den
+Einstellungen, die es bis dahin hat. Setzt der Host `layout`, `readonly` usw.
+erst danach (nach einem `await`, einem `setTimeout` oder dem Nachladen der
+Skripte), ist bis dahin das Standard-Layout zu sehen, mit Texteingabefeld. Meist
+sind das Millisekunden. Ist die Seite gerade beschäftigt, z. B. während einer
+Erschließung, bleibt es 1–2 s stehen. Das Widget kann nicht erkennen, ob der Host
+noch Einstellungen nachreicht; ohne Einstellungen ist das Standard-Layout richtig.
+
+Deshalb die Einstellungen setzen, bevor oder während das Element entsteht:
+
+- als Attribute im Markup (wie oben) oder als Property-Bindings im Template des
+  Hosts (`[layout]="…"`, `[metadataInput]="…"`), oder
+- per Script im selben Ablauf, der das Element erzeugt: vor `appendChild` und vor
+  jedem `await`.
+
+```js
+const el = document.createElement('metadata-agent-canvas');
+el.layout = 'clean';
+el.showCoreFields = false;
+el.metadataInput = { contentType: '…' };
+container.appendChild(el);
+// Erst danach runtime.js, polyfills.js und main.js laden (falls noch nicht
+// geschehen): Properties, die vor der Registrierung gesetzt wurden, übernimmt
+// das Widget beim Start vor dem ersten Zeichnen (Angular Elements).
+```
+
+edu-sharing (Stand 10/2026) setzt die Properties erst nach dem Laden der Skripte
+in einem `setTimeout`; dort ist deshalb kurz das Eingabefeld zu sehen. Beheben
+lässt sich das nur in edu-sharing, nach dem Muster oben. 2.1.1 verhielt sich
+genauso.
 
 ### Programmatischer Zugriff (JavaScript)
 

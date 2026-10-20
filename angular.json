@@ -34,7 +34,7 @@
                 "output": "examples"
               },
               {
-                "glob": "material-icons{,-outlined}.woff2",
+                "glob": "material-icons.woff2",
                 "input": "node_modules/material-icons/iconfont",
                 "output": "fonts"
               },
@@ -132,7 +132,7 @@
             "assets": [
               "src/assets",
               {
-                "glob": "material-icons{,-outlined}.woff2",
+                "glob": "material-icons.woff2",
                 "input": "node_modules/material-icons/iconfont",
                 "output": "fonts"
               },

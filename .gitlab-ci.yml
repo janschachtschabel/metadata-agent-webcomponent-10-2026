@@ -61,8 +61,11 @@ widget build and tests:
 # Not blocking: on 2026-10-18 npm reported 13 (11 high, 2 moderate) in karma,
 # braces, webpack-dev-server, sockjs and uuid, and every fix it offered was a
 # `--force` downgrade (karma 4, build-angular 0.10) that would break the
-# Angular 21 toolchain. A failing job here is a yellow warning in the pipeline;
-# the shipped bundle stays guarded by the blocking --omit=dev audit above.
+# Angular 21 toolchain. Since 2026-10-19 package.json overrides sockjs' uuid
+# (11.1.1), which leaves the 11 braces entries: braces has no fixed release,
+# they go with the move to Vitest and @angular/build:application. A failing
+# job here is a yellow warning in the pipeline; the shipped bundle stays
+# guarded by the blocking --omit=dev audit above.
 audit dev dependencies:
   stage: test
   interruptible: true

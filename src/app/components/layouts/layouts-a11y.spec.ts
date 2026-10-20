@@ -83,3 +83,24 @@ for (const [name, layout] of LAYOUTS) {
     expect(await seriousA11yViolations(fixture.nativeElement)).toEqual([]);
   });
 }
+
+/**
+ * The empty state's icon is an inline SVG: edu-sharing loads no styles.css, and
+ * its own icon font (Material Symbols) has no ligature "info_outline" - the
+ * name showed as text.
+ */
+for (const [name, layout] of LAYOUTS.filter(([n]) => n !== 'default')) {
+  it(`${name} layout draws the empty-state icon without an icon font`, async () => {
+    await TestBed.configureTestingModule({
+      imports: [layout, TranslateModule.forRoot(), NoopAnimationsModule],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(layout);
+    fixture.componentRef.setInput('state', createInitialState());
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const icon = fixture.nativeElement.querySelector('.empty-state mat-icon') as HTMLElement;
+    expect(icon.querySelector('svg')).not.toBeNull();
+    expect(icon.textContent?.trim()).toBe('');
+  });
+}

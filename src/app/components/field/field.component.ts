@@ -35,6 +35,7 @@ import { CanvasFieldState, FieldStatus } from '../../shared/models/canvas.models
 import { FieldValidationService, VocabularyDef } from '../../core/field-validation.service';
 import { sameValue } from '../../core/canvas-fields';
 import { VocabTreePickerComponent } from '../shared/vocab-tree-picker/vocab-tree-picker.component';
+import { SvgIconComponent } from '../shared/svg-icon/svg-icon.component';
 import { uniqueId } from '../../shared/unique-id';
 import { parseDate, parseDateTime } from '../../core/date-parsing';
 
@@ -114,7 +115,8 @@ class WidgetDateAdapter extends NativeDateAdapter {
     MatRadioModule,
     NgxMatTimepickerModule,
     TextFieldModule,
-    VocabTreePickerComponent
+    VocabTreePickerComponent,
+    SvgIconComponent
   ],
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: 'de-DE' },

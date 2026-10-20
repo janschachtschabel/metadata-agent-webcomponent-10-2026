@@ -13,6 +13,7 @@ import { InputAreaComponent } from '../../shared/input-area/input-area.component
 import { StatusBarComponent } from '../../shared/status-bar/status-bar.component';
 import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/preview-thumbnail.component';
 import { uniqueId } from '../../../shared/unique-id';
+import { SvgIconComponent } from '../../shared/svg-icon/svg-icon.component';
 
 /**
  * Clean Layout Component
@@ -45,7 +46,8 @@ import { uniqueId } from '../../../shared/unique-id';
     LanguageSwitcherComponent,
     InputAreaComponent,
     StatusBarComponent,
-    PreviewThumbnailComponent
+    PreviewThumbnailComponent,
+    SvgIconComponent,
   ],
   templateUrl: './clean-layout.component.html',
   styleUrls: ['./clean-layout.component.scss'],

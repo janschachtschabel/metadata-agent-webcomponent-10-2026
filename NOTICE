@@ -42,7 +42,8 @@ RxJS
 Fonts, copied into dist/fonts/
 ------------------------------
 
-Material Icons (material-icons.woff2, material-icons-outlined.woff2),
+Material Icons (material-icons.woff2; the outlined icons "cancel" and
+"info_outline" as inline SVG in src/app/components/shared/svg-icon),
 from the npm package "material-icons"
   License: Apache-2.0, full text in dist/fonts/LICENSE-material-icons.txt
   Material design icons are created by Google.

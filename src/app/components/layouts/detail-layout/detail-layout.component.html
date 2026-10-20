@@ -79,7 +79,7 @@
 
   <!-- ===== EMPTY STATE ===== -->
   <section class="empty-state" *ngIf="!state?.fieldGroups?.length && !state?.isExtracting">
-    <mat-icon>info_outline</mat-icon>
+    <mat-icon><app-svg-icon name="info_outline"></app-svg-icon></mat-icon>
     <p>{{ 'EMPTY_STATE.NO_DATA' | translate }}</p>
   </section>
 

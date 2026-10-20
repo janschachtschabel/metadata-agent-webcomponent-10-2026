@@ -126,6 +126,10 @@ describe('FieldComponent chips', () => {
 
     const remove = fixture.nativeElement.querySelector('[matChipRemove]') as HTMLElement;
     expect(remove.getAttribute('aria-label')).toBe('Musik entfernen');
+    // An inline SVG, not a font ligature: edu-sharing loads main.js without
+    // styles.css, so an icon font of the widget would render as text ("ca…").
+    expect(remove.querySelector('svg')).not.toBeNull();
+    expect(remove.textContent?.trim()).toBe('');
     expect(fixture.nativeElement.querySelector('mat-chip-set').getAttribute('aria-label'))
       .toBe('Ausgewählte Werte');
     expect(await seriousA11yViolations(fixture.nativeElement)).toEqual([]);

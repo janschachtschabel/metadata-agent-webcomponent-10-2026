@@ -134,8 +134,11 @@
         --mat-chip-elevated-container-color: #d4def4;
       }
 
+      // The icon is an inline SVG (shared/svg-icon) that fills the mat-icon.
       button[matChipRemove] mat-icon {
         color: #1f2a3d;
+        width: 18px;
+        height: 18px;
         font-size: 18px;
       }
     }

@@ -1,5 +1,24 @@
 # Änderungen
 
+## 3.0.1 — 2026-10-20 — Symbole in edu-sharing
+
+Gehört zum Agenten 3.0.1. Attribute, Ereignisse und Ansichten wie in 3.0.0.
+
+- **Symbole ohne Icon-Schrift des Widgets:** edu-sharing lädt nur
+  `runtime.js`, `polyfills.js` und `main.js`, nicht `styles.css` (sein eigenes
+  Stylesheet bleibt so ungestört); es gilt seine Icon-Schrift (Material Symbols).
+  Die Outlined-Schrift des Widgets kam dort nie an, und statt ⊗ stand der
+  Ligaturtext („Vorlesung ca“); `info_outline` (Leerzustand, Info-Meldungen) kennt
+  Material Symbols nicht. Beide sind jetzt eingebettete SVGs
+  (`shared/svg-icon`); `material-icons-outlined.woff2` wird nicht mehr
+  ausgeliefert. Alle übrigen Icon-Namen sind gegen die Schrift von edu-sharing
+  geprüft. Betraf 2.1.1 genauso.
+- **Hinweis für Einbettende, ohne Änderung am Widget:** Setzt der Host `layout`
+  usw. erst, nachdem das Element im DOM hängt und registriert ist, zeigt das
+  Widget bis dahin das Standard-Layout mit Texteingabefeld (meist Millisekunden,
+  bei beschäftigter Seite 1–2 s; in edu-sharing beobachtet, betraf 2.1.1
+  genauso). README, „Konfiguration vor dem ersten Rendern“.
+
 ## 3.0.0 — 2026-10-17 — Neuer Aufbau, Korrekturen aus dem Audit
 
 Gehört zum Agenten 3.0.0. Attribute, Ereignisse und Ansichten sind dieselben
@@ -27,6 +46,18 @@ Für Einbettende:
   (ein `element.version` gibt es nicht).
 - Die Sprache merkt sich das Widget unter `metadata-agent-canvas.language`
   (bisher `app_language`, wird einmal übernommen und nicht gelöscht).
+
+Entwicklungswerkzeuge (19.10.):
+
+- **`uuid` über `sockjs` auf 11.1.1** (`overrides` in `package.json`, vorher
+  8.3.2, GHSA-w5hq-g745-h8pq): `sockjs` (im webpack-dev-server von `ng serve`)
+  nutzt nur `require('uuid').v4`, das 11.1.1 weiter als CommonJS bietet. Der
+  nicht blockierende CI-Job `audit dev dependencies` meldet damit 11 statt 13
+  Befunde; übrig ist `braces` (GHSA-vfj7-8cjw-p6xm, ohne korrigierte Version)
+  in Karma, chokidar, micromatch und webpack-dev-server. Das ausgelieferte
+  Bundle ist nicht betroffen (`npm audit --omit=dev`: 0). Die restlichen
+  Befunde entfallen erst mit dem Wechsel auf Vitest und
+  `@angular/build:application`.
 
 Korrekturen aus dem finalen Audit vom 18.10.
 (`metadata-agent-3/docs/audits/2026-10-18-audit-3.0.0-final.md`):

@@ -17,6 +17,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { TranslateModule } from '@ngx-translate/core';
 
 import { uniqueId } from '../../../shared/unique-id';
+import { SvgIconComponent } from '../svg-icon/svg-icon.component';
 
 /** A message for the editor; `question` asks for confirmation instead. */
 export interface Notice {
@@ -36,7 +37,7 @@ export interface Notice {
 @Component({
   selector: 'app-widget-notice',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, TranslateModule],
+  imports: [CommonModule, MatButtonModule, MatIconModule, TranslateModule, SvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- Live regions exist before any message: text inserted together with
@@ -51,7 +52,9 @@ export interface Notice {
          [attr.aria-describedby]="n.question ? textId : null"
          [attr.aria-label]="n.question ? ('COMMON.CONFIRM' | translate) : null"
          (keydown.escape)="onEscape($event)">
-      <mat-icon aria-hidden="true">{{ n.kind === 'error' ? 'error_outline' : (n.question ? 'help_outline' : 'info_outline') }}</mat-icon>
+      <!-- info_outline as SVG: edu-sharing's icon font has no such ligature. -->
+      <mat-icon *ngIf="n.kind === 'error' || n.question; else infoIcon" aria-hidden="true">{{ n.kind === 'error' ? 'error_outline' : 'help_outline' }}</mat-icon>
+      <ng-template #infoIcon><mat-icon aria-hidden="true"><app-svg-icon name="info_outline"></app-svg-icon></mat-icon></ng-template>
       <!-- A message is read from the live region above, a question from here. -->
       <p class="notice-text" [id]="textId" [attr.aria-hidden]="n.question ? null : 'true'">{{ n.text }}</p>
       <div class="notice-actions" *ngIf="n.question; else dismiss">

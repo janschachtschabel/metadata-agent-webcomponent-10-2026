@@ -13,6 +13,7 @@ import { InputAreaComponent } from '../../shared/input-area/input-area.component
 import { StatusBarComponent } from '../../shared/status-bar/status-bar.component';
 import { LanguageSwitcherComponent } from '../../language-switcher/language-switcher.component';
 import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/preview-thumbnail.component';
+import { SvgIconComponent } from '../../shared/svg-icon/svg-icon.component';
 
 /**
  * Dialog Layout Component
@@ -38,7 +39,8 @@ import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/previe
     InputAreaComponent,
     StatusBarComponent,
     LanguageSwitcherComponent,
-    PreviewThumbnailComponent
+    PreviewThumbnailComponent,
+    SvgIconComponent,
   ],
   templateUrl: './dialog-layout.component.html',
   styleUrls: ['./dialog-layout.component.scss'],

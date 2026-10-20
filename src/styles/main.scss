@@ -40,14 +40,6 @@ $font-family: '"Metadata Agent Roboto", Roboto, "Helvetica Neue", sans-serif';
   src: url('^fonts/material-icons.woff2') format('woff2');
 }
 
-@font-face {
-  font-family: 'Metadata Agent Material Icons Outlined';
-  font-style: normal;
-  font-weight: 400;
-  font-display: block;
-  src: url('^fonts/material-icons-outlined.woff2') format('woff2');
-}
-
 @each $weight in 300, 400, 500 {
   @font-face {
     font-family: 'Metadata Agent Roboto';
@@ -72,8 +64,8 @@ $font-family: '"Metadata Agent Roboto", Roboto, "Helvetica Neue", sans-serif';
 // files alone are not enough: without them icon names render as plain text.
 // Scoped, so icons of the host page keep the host's icon font.
 #{$widget-roots} {
-  .material-icons,
-  .material-icons-outlined {
+  .material-icons {
+    font-family: 'Metadata Agent Material Icons';
     font-weight: normal;
     font-style: normal;
     font-size: 24px;
@@ -88,17 +80,6 @@ $font-family: '"Metadata Agent Roboto", Roboto, "Helvetica Neue", sans-serif';
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     font-feature-settings: 'liga';
-  }
-
-  .material-icons {
-    font-family: 'Metadata Agent Material Icons';
-  }
-
-  // mat-icon with fontSet="material-icons-outlined" carries this class; the
-  // filled font must not win over it (kept !important from the former global
-  // override).
-  .material-icons-outlined {
-    font-family: 'Metadata Agent Material Icons Outlined' !important;
   }
 }
 

@@ -12,6 +12,7 @@ import { LanguageSwitcherComponent } from '../../language-switcher/language-swit
 import { InputAreaComponent } from '../../shared/input-area/input-area.component';
 import { StatusBarComponent } from '../../shared/status-bar/status-bar.component';
 import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/preview-thumbnail.component';
+import { SvgIconComponent } from '../../shared/svg-icon/svg-icon.component';
 
 /**
  * Prüftisch Layout Component
@@ -42,7 +43,8 @@ import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/previe
     LanguageSwitcherComponent,
     InputAreaComponent,
     StatusBarComponent,
-    PreviewThumbnailComponent
+    PreviewThumbnailComponent,
+    SvgIconComponent,
   ],
   templateUrl: './prueftisch-layout.component.html',
   styleUrls: ['./prueftisch-layout.component.scss'],

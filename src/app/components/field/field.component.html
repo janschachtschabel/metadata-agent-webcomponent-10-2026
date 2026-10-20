@@ -197,7 +197,7 @@
         <mat-chip *ngFor="let chip of field.value" highlighted (removed)="!readonly && removeChip(chip)">
           {{ getChipDisplayValue(chip) }}
           <button *ngIf="!readonly" matChipRemove type="button" [attr.aria-label]="'FIELD.REMOVE_VALUE' | translate: { value: getChipDisplayValue(chip) }" (mousedown)="$event.stopPropagation()">
-            <mat-icon fontSet="material-icons-outlined">cancel</mat-icon>
+            <mat-icon><app-svg-icon name="cancel"></app-svg-icon></mat-icon>
           </button>
         </mat-chip>
       </mat-chip-set>
@@ -253,7 +253,7 @@
         <mat-chip *ngFor="let chip of field.value" highlighted (removed)="!readonly && removeChip(chip)">
           {{ getChipDisplayValue(chip) }}
           <button *ngIf="!readonly" matChipRemove type="button" [attr.aria-label]="'FIELD.REMOVE_VALUE' | translate: { value: getChipDisplayValue(chip) }">
-            <mat-icon fontSet="material-icons-outlined">cancel</mat-icon>
+            <mat-icon><app-svg-icon name="cancel"></app-svg-icon></mat-icon>
           </button>
         </mat-chip>
       </mat-chip-set>

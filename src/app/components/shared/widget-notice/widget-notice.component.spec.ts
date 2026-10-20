@@ -119,6 +119,17 @@ describe('WidgetNoticeComponent', () => {
     expect(closed).toEqual([true, false, false]);
   });
 
+  it('draws the information icon without an icon font', async () => {
+    // edu-sharing's icon font (Material Symbols) has no ligature "info_outline".
+    const box = await show({ text: 'Gespeichert', kind: 'info' });
+    const icon = box.querySelector('mat-icon') as HTMLElement;
+    expect(icon.querySelector('svg')).not.toBeNull();
+    expect(icon.textContent?.trim()).toBe('');
+
+    const error = await show({ text: 'Fehlgeschlagen', kind: 'error' });
+    expect(error.querySelector('mat-icon')?.textContent?.trim()).toBe('error_outline');
+  });
+
   it('can be dismissed', async () => {
     const box = await show({ text: 'Upload erfolgreich', kind: 'info' });
     (box.querySelector('.dismiss-button') as HTMLElement).click();
