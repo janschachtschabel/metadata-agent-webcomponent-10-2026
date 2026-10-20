@@ -17,7 +17,7 @@ Gehört zum Agenten 3.0.1. Attribute, Ereignisse und Ansichten wie in 3.0.0.
   usw. erst, nachdem das Element im DOM hängt und registriert ist, zeigt das
   Widget bis dahin das Standard-Layout mit Texteingabefeld (meist Millisekunden,
   bei beschäftigter Seite 1–2 s; in edu-sharing beobachtet, betraf 2.1.1
-  genauso). README, „Konfiguration vor dem ersten Rendern“.
+  genauso). Korrigierte Einbindung: README, „Einbettung in edu-sharing“.
 
 ## 3.0.0 — 2026-10-17 — Neuer Aufbau, Korrekturen aus dem Audit
 

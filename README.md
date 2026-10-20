@@ -125,18 +125,6 @@ sollten daher so bleiben; wer sie ändert, setzt `api-url` ausdrücklich.
 </metadata-agent-canvas>
 ```
 
-### Einbettung in edu-sharing (Pruefdialog)
-
-```html
-<metadata-agent-canvas
-  layout="clean"
-  context-name="mds_oeh"
-  schema-version="1.8.0">
-</metadata-agent-canvas>
-```
-
-> **Hinweis:** `metadatenpruefdialog` ist weiterhin als Alias fuer `clean` nutzbar.
-
 ### Konfiguration vor dem ersten Rendern
 
 Das Widget zeichnet sich, sobald es im DOM hängt und registriert ist, mit den
@@ -149,8 +137,8 @@ noch Einstellungen nachreicht; ohne Einstellungen ist das Standard-Layout richti
 
 Deshalb die Einstellungen setzen, bevor oder während das Element entsteht:
 
-- als Attribute im Markup (wie oben) oder als Property-Bindings im Template des
-  Hosts (`[layout]="…"`, `[metadataInput]="…"`), oder
+- als Attribute im Markup oder als Property-Bindings im Template des Hosts
+  (`[layout]="…"`, `[metadataInput]="…"`), oder
 - per Script im selben Ablauf, der das Element erzeugt: vor `appendChild` und vor
   jedem `await`.
 
@@ -165,10 +153,84 @@ container.appendChild(el);
 // das Widget beim Start vor dem ersten Zeichnen (Angular Elements).
 ```
 
-edu-sharing (Stand 10/2026) setzt die Properties erst nach dem Laden der Skripte
-in einem `setTimeout`; dort ist deshalb kurz das Eingabefeld zu sehen. Beheben
-lässt sich das nur in edu-sharing, nach dem Muster oben. 2.1.1 verhielt sich
-genauso.
+### Einbettung in edu-sharing
+
+edu-sharing lädt `runtime.js`, `polyfills.js` und `main.js` selbst (ohne
+`styles.css`) und zeigt das Widget an zwei Stellen: im Formular-Editor (Feld
+`ccm:oeh_extendedData`, `clean`, beim Ansehen `detail`) und in der
+Detailansicht (`detail`, nur lesen). Alle Einstellungen gehören an das Element,
+sobald es angelegt ist; nur das Laden der Skripte bleibt asynchron. Dann
+erscheint das Standard-Layout mit Eingabefeld gar nicht.
+
+Stand 10/2026 setzt edu-sharing die Werte erst nach `await initWebComponent()`,
+im Formular-Editor zusätzlich in einem `setTimeout`; bis dahin ist kurz das
+Eingabefeld zu sehen (2.1.1 genauso). So sieht die korrigierte Einbindung aus:
+
+**Formular-Editor** (MDS-Widget für `ccm:oeh_extendedData`):
+
+```ts
+this.show = r;
+this.cdr.detectChanges();                  // legt <metadata-agent-canvas> an
+if (!r) return;
+
+// Sofort konfigurieren, nicht erst nach dem Laden der Skripte.
+const el = this.canvas.nativeElement;
+const viewer = this.mdsEditorInstance.editorMode === 'viewer';
+el.apiUrl = Od.getBaseUrl(this.deskService); // derselbe Wert, den initWebComponent liefert
+el.layout = viewer ? 'detail' : 'clean';
+el.readonly = viewer;
+el.columns = this.mdsEditorInstance.groupId === 'io_render' ? 4 : 1;
+el.showFloatingControls = false;
+el.highlightAi = true;
+el.showCoreFields = false;
+el.metadataInput = {
+  ...JSON.parse(props['ccm:oeh_extendedData']?.[0] || '{}'),
+  contentType: props['ccm:oeh_extendedType']?.[0],
+};
+el.addEventListener('metadataChange', (e) => { /* wie bisher */ });
+
+// Nur noch die Skripte laden (tut nichts, wenn das Widget schon registriert ist).
+this.ngZone.runOutsideAngular(() => Od.initWebComponent(this.deskService));
+```
+
+**Detailansicht** (`wlo-extended-content-types`):
+
+```ts
+ngAfterViewInit() {
+  const el = this.canvas.nativeElement;      // zuerst konfigurieren …
+  const props = this.node().properties;
+  el.apiUrl = n.getApiUrl();
+  el.layout = 'detail';
+  el.readonly = true;
+  el.columns = 1;
+  el.borderless = true;
+  el.backgroundColor = 'transparent';
+  el.showFloatingControls = false;
+  el.metadataInput = {
+    ...JSON.parse(props['ccm:oeh_extendedData']?.[0] || '{}'),
+    contentType: props['ccm:oeh_extendedType']?.[0],
+  };
+  n.initWebComponent(this.deskService);    // … dann die Skripte laden
+}
+```
+
+`contentType` setzt der Formular-Editor bei einer Änderung des Inhaltstyps
+weiter wie bisher. Gleichwertig zu den Zuweisungen sind Property-Bindings im
+Template (`[layout]="viewer ? 'detail' : 'clean'"`, `[metadataInput]="…"`,
+`(metadataChange)="…"`); das Element steht dort bereits mit
+`CUSTOM_ELEMENTS_SCHEMA`.
+
+Als statisches HTML, z. B. für einen Prüfdialog:
+
+```html
+<metadata-agent-canvas
+  layout="clean"
+  context-name="mds_oeh"
+  schema-version="1.8.0">
+</metadata-agent-canvas>
+```
+
+> **Hinweis:** `metadatenpruefdialog` ist weiterhin als Alias fuer `clean` nutzbar.
 
 ### Programmatischer Zugriff (JavaScript)
 
