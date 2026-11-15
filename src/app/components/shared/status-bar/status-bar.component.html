@@ -1,34 +1,13 @@
 <!-- Shared Status Bar -->
 <section class="status-bar" [class.compact]="compact">
   
-  <!-- Content Type Selector -->
-  <div class="content-type-selector">
-    <div class="split-button">
-      <div class="split-button-label">
-        <mat-icon>{{ state?.contentTypeIcon || 'category' }}</mat-icon>
-        <span>{{ state?.contentTypeLabel || ('CONTENT_TYPE.NOT_DETECTED' | translate) }}</span>
-      </div>
-      <button 
-        mat-icon-button
-        [matMenuTriggerFor]="contentTypeMenu"
-        [disabled]="state?.isExtracting ?? false"
-        class="split-button-trigger"
-        [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
-        <mat-icon>expand_more</mat-icon>
-      </button>
-    </div>
-    
-    <mat-menu #contentTypeMenu="matMenu">
-      <button 
-        mat-menu-item 
-        *ngFor="let ct of contentTypes"
-        (click)="selectContentType.emit(ct)"
-        [class.active]="state?.contentTypeLabel === ct.label">
-        <span>{{ ct.label }}</span>
-        <mat-icon *ngIf="state?.contentTypeLabel === ct.label">check</mat-icon>
-      </button>
-    </mat-menu>
-  </div>
+  <app-content-type-menu
+    class="content-type-selector"
+    [state]="state"
+    [contentTypes]="contentTypes"
+    [readonly]="readonly"
+    (selectContentType)="selectContentType.emit($event)">
+  </app-content-type-menu>
 
   <!-- Field Stats -->
   <div class="field-stats">
@@ -49,7 +28,7 @@
       [attr.aria-label]="'PROGRESS.FIELDS_FILLED' | translate">
     </mat-progress-bar>
     <mat-icon class="progress-icon" [class.complete]="_progressPercent === 100">
-      {{ _progressPercent === 100 ? 'check_circle' : 'pending' }}
+      {{ _progressPercent === 100 ? 'check_circle' : 'hourglass_empty' }}
     </mat-icon>
   </div>
 

@@ -24,50 +24,33 @@ import { LayoutConfig } from '../layout.models';
  */
 export const PRUEFTISCH_LAYOUT: LayoutConfig = {
   name: 'prueftisch',
-  i18nKey: 'LAYOUT.PRUEFTISCH.NAME',
-  i18nDescription: 'LAYOUT.PRUEFTISCH.DESCRIPTION',
   elements: {
-    // Header - hidden for embedding
-    header: false,
-    closeButton: false,
-    
-    // Input - disabled (data provided externally)
+    // Input
     inputArea: false,
-    extractButton: false,
-    resetButton: false,
-    
-    // Status - hidden for clean view
+
+    // Status
     statusBar: false,
-    contentTypeSelector: true,
-    progressBar: false,
-    
-    // Fields - show all with actions
+
+    // Fields
     coreFields: true,
     specialFields: true,
-    fieldActions: true,
+    fieldActions: false,
     groupCollapse: true,
-    
-    // Footer - hidden
-    footer: false,
-    
-    // Floating Controls - only content type and language
+
+    // Floating bar
     floatingControls: true,
+    contentTypeSelector: true,
     jsonLoader: false,
     saveButton: false,
     uploadButton: false,
-    floatingResetButton: true,
+    floatingResetButton: false,
     languageSwitcher: true
   },
   style: {
     borderless: true,
-    compact: false,  // Normal padding for readability
-    columns: 1,
-    cssClass: 'layout-prueftisch'
+    columns: 1
   },
   behavior: {
-    readonly: false,  // Editable for corrections
-    emitChanges: true,
-    autoExtract: false,
-    contentTypeOnly: false
+    readonly: false
   }
 };

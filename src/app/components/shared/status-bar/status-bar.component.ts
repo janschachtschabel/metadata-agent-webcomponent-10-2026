@@ -9,12 +9,11 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TranslateModule } from '@ngx-translate/core';
-import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
-import { CanvasState, ContentType, CanvasFieldState, FieldGroup, FieldStatus } from '../../../shared/models/canvas.models';
+import { CanvasState, ContentType, CanvasFieldState, FieldStatus } from '../../../shared/models/canvas.models';
+import { ContentTypeMenuComponent } from '../content-type-menu/content-type-menu.component';
 
 /**
  * Shared Status Bar Component
@@ -28,10 +27,9 @@ import { CanvasState, ContentType, CanvasFieldState, FieldGroup, FieldStatus } f
   imports: [
     CommonModule,
     TranslateModule,
-    MatButtonModule,
     MatIconModule,
-    MatMenuModule,
-    MatProgressBarModule
+    MatProgressBarModule,
+    ContentTypeMenuComponent
   ],
   templateUrl: './status-bar.component.html',
   styleUrls: ['./status-bar.component.scss'],
@@ -41,6 +39,8 @@ export class StatusBarComponent implements OnChanges {
   @Input() state: CanvasState | null = null;
   @Input() contentTypes: ContentType[] = [];
   @Input() compact = false;
+  /** A read-only view offers no type choice (W-LOG-09). */
+  @Input() readonly = false;
 
   @Output() selectContentType = new EventEmitter<ContentType>();
 

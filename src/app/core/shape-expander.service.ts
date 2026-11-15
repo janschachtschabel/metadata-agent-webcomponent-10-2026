@@ -9,6 +9,7 @@ import { Injectable } from '@angular/core';
 import { CanvasFieldState, FieldStatus } from '../shared/models/canvas.models';
 import { SchemaService } from './schema.service';
 import { declaresObjects, objectKeyFor, toObjectShape, variantsOf } from './object-shape';
+import { isValueFilled } from './canvas-fields';
 
 @Injectable({
   providedIn: 'root'
@@ -41,11 +42,11 @@ export class ShapeExpanderService {
 
     items.forEach((item, index) => {
       subFields.push(...this.createSubFieldsFromObject(
-        parentField, item, index,
-        parentField.shape || schemaFieldDef,
-        schemaFieldDef, language
+        parentField, item, index, parentField.shape, schemaFieldDef, language, key
       ));
     });
+    // The entries as they came in, for the way back (reconstructObjectFromSubFields).
+    subFields.forEach(subField => (subField.objectOrigins = items));
 
     return subFields;
   }
@@ -56,7 +57,8 @@ export class ShapeExpanderService {
     arrayIndex: number,
     shapeDefinition: any,
     schemaFieldDef: any,
-    language: 'de' | 'en'
+    language: 'de' | 'en',
+    objectKey: string
   ): CanvasFieldState[] {
     const subFields: CanvasFieldState[] = [];
 
@@ -74,7 +76,23 @@ export class ShapeExpanderService {
             parentField, fieldDef, fieldValue, '', arrayIndex, language, subFields
           );
         });
+        // "Default" stands for a variant without a type of its own, as in the
+        // backend's prompt builder.
+        const type = matchedVariant['@type'];
+        if (type && type !== 'Default') {
+          subFields.forEach(subField => (subField.objectType = type));
+        }
       }
+    } else if (!shapeDefinition) {
+      // An object the schema describes no further (schema:provider in
+      // course.json): one input for the key a bare name belongs in, as the
+      // backend's normalizer has it. Every other key of the object stays as it
+      // came (reconstructObjectFromSubFields). The field's own definition used
+      // to stand in as the shape: 18 inputs "Provider (Label.de)" …, and
+      // `label`, `description`, `prompt`, `system` in the record (audit 14.11., W-30).
+      subFields.push(this.createSubField(
+        parentField, objectKey, this.formatLabel(objectKey), 'string', objectValue[objectKey], arrayIndex
+      ));
     } else {
       let activeShape = shapeDefinition;
       if (shapeDefinition.oneOf && Array.isArray(shapeDefinition.oneOf)) {
@@ -148,7 +166,12 @@ export class ShapeExpanderService {
       const match = variants.find(v => v['@type'] === objectValue['@type']);
       if (match) return match;
     }
-    return variants[0];
+    // Without a usable type: the variant most of whose subfields the object
+    // has, the first one on a tie. The export writes the variant's type into
+    // the object (W-LOG-03), so {url} must not come out as a "Place".
+    const known = (variant: any) =>
+      (variant.fields || []).filter((f: any) => objectValue[f.id] !== undefined && objectValue[f.id] !== null).length;
+    return variants.reduce((best, variant) => (known(variant) > known(best) ? variant : best), variants[0]);
   }
 
   private findMatchingShape(objectValue: any, oneOfShapes: any[]): any {
@@ -284,8 +307,32 @@ export class ShapeExpanderService {
   }
 
   reconstructObjectFromSubFields(parentField: CanvasFieldState, allFields: CanvasFieldState[]): any {
-    let subFields: CanvasFieldState[] = [];
-    
+    const entries = this.entriesOf(parentField, allFields);
+    if (!entries) {
+      return parentField.value;
+    }
+    // An untouched object form must not be exported. Object fields always
+    // offer their form — including empty ones, so nobody types a bare name
+    // into a text input — and without this filter every unfilled object field
+    // would write `[{}]` into ccm:oeh_extendedData. The rule for "empty" is
+    // the one of the whole record (isValueFilled, W-41).
+    const filled = entries.filter(entry => isValueFilled(entry));
+    return parentField.multiple ? filled : filled[0];
+  }
+
+  /**
+   * Every entry of an object field as the form holds it, by `arrayIndex` -
+   * also the empty ones, which the value leaves out. What adding and removing
+   * an entry works on (W-42).
+   */
+  objectEntries(parentField: CanvasFieldState): any[] {
+    return this.entriesOf(parentField, []) ?? [];
+  }
+
+  /** The entries behind the subfields of `parentField`; null without subfields. */
+  private entriesOf(parentField: CanvasFieldState, allFields: CanvasFieldState[]): any[] | null {
+    let subFields: CanvasFieldState[];
+
     if (parentField.subFields && parentField.subFields.length > 0) {
       subFields = parentField.subFields;
     } else {
@@ -293,7 +340,7 @@ export class ShapeExpanderService {
     }
 
     if (subFields.length === 0) {
-      return parentField.value;
+      return null;
     }
 
     const groupedByIndex = new Map<number, CanvasFieldState[]>();
@@ -305,80 +352,85 @@ export class ShapeExpanderService {
       groupedByIndex.get(index)!.push(field);
     });
 
+    // Each entry as it came in is the base of what goes out (W-LOG-03): the
+    // form only knows the subfields of one variant, so the discriminator and
+    // every other key the entry brought used to be lost on export, upload and
+    // in existing_metadata. An entry whose variant has no subfields at all
+    // (PostalAddress in event.json) stays as it is. Not read from
+    // parentField.value: after an edit that is the list without its emptied
+    // entries, and `arrayIndex` no longer counts it.
+    const origins = subFields[0].objectOrigins || [];
+    const entries = Math.max(origins.length, ...Array.from(groupedByIndex.keys(), index => index + 1));
+
     const reconstructedObjects: any[] = [];
-    groupedByIndex.forEach((fields) => {
-      const obj = this.buildObjectFromFields(fields);
-      // An untouched object form must not be exported. Object fields now always
-      // offer their form — including empty ones, so nobody types a bare name
-      // into a text input — and without this filter every unfilled object field
-      // would write `[{}]` into ccm:oeh_extendedData.
-      if (this.hasContent(obj)) {
-        reconstructedObjects.push(obj);
+    for (let index = 0; index < entries; index++) {
+      const fields = groupedByIndex.get(index) || [];
+      const obj = this.buildObjectFromFields(fields, origins[index]);
+      const type = fields[0]?.objectType;
+      if (type && !obj['@type']) {
+        obj['@type'] = type;
       }
-    });
+      reconstructedObjects.push(obj);
+    }
 
-    return parentField.multiple ? reconstructedObjects : reconstructedObjects[0];
+    return reconstructedObjects;
   }
 
-  /** Does this object carry any value at all, however deeply nested? */
-  private hasContent(value: any): boolean {
-    if (value === null || value === undefined || value === '') return false;
-    if (Array.isArray(value)) return value.some(item => this.hasContent(item));
-    if (typeof value === 'object') return Object.values(value).some(v => this.hasContent(v));
-    return true;
-  }
-
-  private buildObjectFromFields(fields: CanvasFieldState[]): any {
-    const result: any = {};
-    const containerPaths = new Set<string>();
-
-    fields.forEach(field => {
-      if (field.path && field.path.includes('.')) {
-        const pathParts = field.path.split('.');
-        for (let i = 1; i < pathParts.length; i++) {
-          const containerPath = pathParts.slice(0, i).join('.');
-          containerPaths.add(containerPath);
-        }
+  /**
+   * The object of one entry: `origin` with the subfields laid over it. A
+   * subfield without a value removes its key - the editor emptied it. Every
+   * object written into is a copy; `origin` belongs to the host page.
+   *
+   * A container the form shows (`address`, `geo`) is left out while nothing
+   * is in it: every entry used to come back with `address: {}` and `geo: {}`,
+   * also in a record that had neither (audit 14.11., W-41). Keys the form
+   * does not show stay as they came, empty or not (W-LOG-03).
+   */
+  private buildObjectFromFields(fields: CanvasFieldState[], origin?: any): any {
+    const isObject = (value: any) => !!value && typeof value === 'object' && !Array.isArray(value);
+    const result: any = isObject(origin) ? { ...origin } : {};
+    const own = new Set<any>([result]);
+    const container = (parent: any, key: string): any => {
+      if (!own.has(parent[key])) {
+        parent[key] = isObject(parent[key]) ? { ...parent[key] } : {};
+        own.add(parent[key]);
       }
-    });
+      return parent[key];
+    };
 
     fields.forEach(field => {
       if (!field.path) return;
 
       const pathParts = field.path.split('.');
       let current = result;
-      
-      for (let i = 0; i < pathParts.length - 1; i++) {
-        const part = pathParts[i];
-        if (!current[part] || typeof current[part] !== 'object') {
-          current[part] = {};
-        }
-        current = current[part];
+      for (const part of pathParts.slice(0, -1)) {
+        current = container(current, part);
       }
 
       const lastPart = pathParts[pathParts.length - 1];
-      
       if (field.isParent) {
-        if (field.value === null || field.value === undefined) {
-          current[lastPart] = {};
-        } else if (typeof field.value === 'object' && !Array.isArray(field.value)) {
-          current[lastPart] = field.value;
-        } else {
-          current[lastPart] = field.value;
-        }
+        // A nested object: the subfields below it fill it.
+        container(current, lastPart);
       } else if (field.value !== null && field.value !== undefined) {
         current[lastPart] = field.value;
+      } else {
+        delete current[lastPart];
       }
     });
 
-    containerPaths.forEach(containerPath => {
-      const pathParts = containerPath.split('.');
-      let current = result;
-      for (const part of pathParts) {
-        if (!current[part]) current[part] = {};
-        current = current[part];
-      }
+    // Innermost first: a container holding only an empty container is empty.
+    const containers = new Set<string>();
+    fields.forEach(field => {
+      const parts = (field.path || '').split('.');
+      const depth = field.isParent ? parts.length : parts.length - 1;
+      for (let length = 1; length <= depth; length++) containers.add(parts.slice(0, length).join('.'));
     });
+    const innermostFirst = Array.from(containers, path => path.split('.')).sort((a, b) => b.length - a.length);
+    for (const parts of innermostFirst) {
+      const parent = parts.slice(0, -1).reduce((object, part) => object?.[part], result);
+      const key = parts[parts.length - 1];
+      if (isObject(parent) && !isValueFilled(parent[key])) delete parent[key];
+    }
 
     return result;
   }

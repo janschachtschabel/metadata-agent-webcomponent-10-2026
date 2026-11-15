@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { Type } from '@angular/core';
+import { Type, reflectComponentType } from '@angular/core';
 import { TranslateModule } from '@ngx-translate/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { NoAnimationsModule } from '../../testing/no-animations';
 
 import { CleanLayoutComponent } from './clean-layout/clean-layout.component';
 import { DefaultLayoutComponent } from './default-layout/default-layout.component';
@@ -67,7 +67,7 @@ for (const [name, layout, extra] of LAYOUTS) {
   describe(`${name} layout columns`, () => {
     async function columnsAt(width: number): Promise<number> {
       await TestBed.configureTestingModule({
-        imports: [layout, TranslateModule.forRoot(), NoopAnimationsModule],
+        imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
       }).compileComponents();
       const fixture = TestBed.createComponent(layout);
       const host = fixture.nativeElement as HTMLElement;
@@ -92,3 +92,120 @@ for (const [name, layout, extra] of LAYOUTS) {
     });
   });
 }
+
+/**
+ * Audit 13.11. (W-LOG-10): the error banner did not break long words. The
+ * request id of a failure has 32 characters since 3.0.1; at 320 px it ran out
+ * of the banner. The warning shares the banner's rules.
+ */
+for (const [name, layout] of LAYOUTS) {
+  for (const [banner, key] of [['extraction-error', 'extractionError'], ['extraction-warning', 'extractionWarning']]) {
+    it(`${name} layout keeps a long ${banner} text inside a 320 px widget`, async () => {
+      await TestBed.configureTestingModule({
+        imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(layout);
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.display = 'block';
+      host.style.width = '320px';
+      fixture.componentRef.setInput('state', {
+        ...stateWithFields(1),
+        [key]: 'KI-Erschließung fehlgeschlagen: Der Dienst antwortet nicht (Anfrage-ID: 0123456789abcdef0123456789abcdef0123456789abcdef)',
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const box = host.querySelector(`.${banner}`) as HTMLElement;
+      const text = box.querySelector('span') as HTMLElement;
+      expect(text.getBoundingClientRect().right).toBeLessThanOrEqual(box.getBoundingClientRect().right);
+      expect(box.getBoundingClientRect().right).toBeLessThanOrEqual(host.getBoundingClientRect().right);
+    });
+  }
+}
+
+/**
+ * Audit 14.11. (U-02): three layouts (clean, detail, plugin) gave their
+ * fields the full width plus a padding. Without a host page that resets
+ * box-sizing they stood 8 to 30 px out of the widget, and a long value ended
+ * outside it.
+ */
+for (const [name, layout] of LAYOUTS) {
+  it(`${name} layout keeps its fields inside a 320 px widget`, async () => {
+    await TestBed.configureTestingModule({
+      imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(layout);
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.width = '320px';
+    fixture.componentRef.setInput('state', stateWithFields(2));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const fields = host.querySelector('.fields-section') as HTMLElement;
+    expect(fields.getBoundingClientRect().right).toBeLessThanOrEqual(host.getBoundingClientRect().right);
+    for (const field of Array.from(host.querySelectorAll('app-field'))) {
+      expect(field.getBoundingClientRect().right).toBeLessThanOrEqual(host.getBoundingClientRect().right);
+    }
+  });
+}
+
+/**
+ * Audit 14.11. (U-25): the floating bar could be wider than a 320 px widget -
+ * the browser extension's bar has three buttons with their text, a type
+ * button and the language switch - and its entrance animated a
+ * `translateX(-50%)` left over from a centring it no longer uses: the bar
+ * jumped half its width to the left and slid back.
+ */
+for (const [name, layout] of LAYOUTS) {
+  it(`${name} layout keeps its floating bar inside a 320 px widget`, async () => {
+    await TestBed.configureTestingModule({
+      imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(layout);
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.width = '320px';
+    const declared = new Set(reflectComponentType(layout)!.inputs.map(input => input.templateName));
+    const everything: Record<string, unknown> = {
+      state: { ...stateWithFields(2), contentTypeLabel: 'Bildungsangebot der beruflichen Weiterbildung' },
+      contentTypes: [{ label: 'Veranstaltung', schemaFile: 'event.json' }],
+      showFloatingControls: true, showContentType: true, showLanguageSwitcher: true,
+      showJsonLoader: true, showSaveButton: true, showUploadButton: true, showResetButton: true,
+    };
+    for (const [input, value] of Object.entries(everything)) {
+      if (declared.has(input)) fixture.componentRef.setInput(input, value);
+    }
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const bar = host.querySelector('app-floating-bar') as HTMLElement;
+    const edges = host.getBoundingClientRect();
+    expect(bar.getBoundingClientRect().left).toBeGreaterThanOrEqual(edges.left);
+    expect(bar.getBoundingClientRect().right).toBeLessThanOrEqual(edges.right);
+    for (const part of Array.from(bar.children)) {
+      expect(part.getBoundingClientRect().left).withContext(part.tagName).toBeGreaterThanOrEqual(edges.left);
+      expect(part.getBoundingClientRect().right).withContext(part.tagName).toBeLessThanOrEqual(edges.right);
+    }
+  });
+}
+
+it('the floating bar slides up without moving sideways', async () => {
+  await TestBed.configureTestingModule({
+    imports: [DefaultLayoutComponent, TranslateModule.forRoot()],
+  }).compileComponents();
+  const fixture = TestBed.createComponent(DefaultLayoutComponent);
+  fixture.componentRef.setInput('state', stateWithFields(1));
+  fixture.detectChanges();
+  const animation = getComputedStyle(fixture.nativeElement.querySelector('app-floating-bar')).animationName;
+
+  const frames = Array.from(document.styleSheets)
+    .flatMap(sheet => Array.from(sheet.cssRules))
+    .filter((rule): rule is CSSKeyframesRule => rule instanceof CSSKeyframesRule && rule.name === animation)
+    .flatMap(rule => Array.from(rule.cssRules) as CSSKeyframeRule[]);
+
+  expect(animation).withContext('the bar has an entrance animation').not.toBe('none');
+  expect(frames.length).toBeGreaterThan(0);
+  expect(frames.map(frame => frame.style.transform).filter(transform => /translateX|translate\(/.test(transform))).toEqual([]);
+  expect(frames.some(frame => frame.style.transform.includes('translateY'))).toBeTrue();
+});

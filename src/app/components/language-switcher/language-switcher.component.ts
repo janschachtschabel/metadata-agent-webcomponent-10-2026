@@ -14,7 +14,7 @@ import { I18nService } from '../../core/i18n.service';
   // button does; a tooltip is no accessible name (U-16). The switch texts are
   // phrased in the target language on purpose.
   template: `
-    <button
+    <button type="button"
       mat-button
       class="lang-button"
       (click)="toggleLanguage()"

@@ -1,0 +1,85 @@
+<app-content-type-menu
+  *ngIf="showContentType"
+  class="floating-content-type"
+  [state]="state"
+  [contentTypes]="contentTypes"
+  [readonly]="readonly"
+  (selectContentType)="selectContentType.emit($event)">
+</app-content-type-menu>
+
+<!-- Action buttons (hidden when showContentTypeOnly is true) -->
+<div class="action-buttons" [class.labelled]="labelled" *ngIf="hasActions && !showContentTypeOnly">
+  <app-json-loader *ngIf="showJsonLoader" (jsonLoaded)="jsonLoaded.emit($event)" (loadError)="jsonLoadError.emit()"></app-json-loader>
+
+  <ng-container *ngIf="!labelled; else labelledButtons">
+    <button type="button"
+      mat-icon-button
+      *ngIf="showSaveButton"
+      class="btn-save"
+      [disabled]="!state?.filledFields"
+      (click)="save.emit()"
+      [matTooltip]="saveLabel | translate" [attr.aria-label]="saveLabel | translate">
+      <mat-icon>{{ saveIcon }}</mat-icon>
+    </button>
+
+    <button type="button"
+      mat-icon-button
+      *ngIf="showUploadButton"
+      class="btn-upload"
+      [disabled]="!state?.filledFields || uploading || extracting"
+      [disabledInteractive]="uploading || extracting"
+      (click)="onUpload()"
+      [matTooltip]="'CONTROLS.UPLOAD' | translate" [attr.aria-label]="'CONTROLS.UPLOAD' | translate">
+      <mat-icon>cloud_upload</mat-icon>
+    </button>
+
+    <button type="button"
+      mat-icon-button
+      *ngIf="showResetButton"
+      class="btn-reset"
+      [disabled]="extracting"
+      [disabledInteractive]="extracting"
+      (click)="onReset()"
+      [matTooltip]="'CONTROLS.RESET' | translate" [attr.aria-label]="'CONTROLS.RESET' | translate">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </ng-container>
+
+  <ng-template #labelledButtons>
+    <button type="button"
+      mat-flat-button
+      *ngIf="showSaveButton"
+      class="btn-action btn-save"
+      [class.has-data]="!!state?.filledFields"
+      [disabled]="!state?.filledFields"
+      (click)="save.emit()">
+      <mat-icon>{{ saveIcon }}</mat-icon>
+      <span>{{ saveLabel | translate }}</span>
+    </button>
+
+    <button type="button"
+      mat-flat-button
+      *ngIf="showUploadButton"
+      class="btn-action btn-upload"
+      [disabled]="!state?.filledFields || uploading || extracting"
+      [disabledInteractive]="uploading || extracting"
+      (click)="onUpload()">
+      <mat-icon>cloud_upload</mat-icon>
+      <span>{{ 'CONTROLS.UPLOAD' | translate }}</span>
+    </button>
+
+    <button type="button"
+      mat-flat-button
+      *ngIf="showResetButton"
+      class="btn-action btn-reset"
+      [disabled]="extracting"
+      [disabledInteractive]="extracting"
+      (click)="onReset()">
+      <mat-icon>refresh</mat-icon>
+      <span>{{ 'CONTROLS.RESET' | translate }}</span>
+    </button>
+  </ng-template>
+</div>
+
+<!-- Language switcher (separate floating pill) -->
+<app-language-switcher *ngIf="showLanguageSwitcher && !showContentTypeOnly"></app-language-switcher>

@@ -28,20 +28,17 @@
     *ngIf="showStatusBar && state?.totalFields"
     [state]="state"
     [contentTypes]="contentTypes"
+    [readonly]="readonly"
     (selectContentType)="selectContentType.emit($event)">
   </app-status-bar>
 
-  <!-- ===== EXTRACTION ERROR ===== -->
-  <div class="extraction-error" *ngIf="state?.extractionError" role="alert">
-    <mat-icon>error_outline</mat-icon>
-    <span>{{ state!.extractionError }}</span>
-  </div>
-
-  <!-- ===== EXTRACTION WARNING ===== -->
-  <div class="extraction-warning" *ngIf="state?.extractionWarning">
-    <mat-icon>warning</mat-icon>
-    <span>{{ state!.extractionWarning }}</span>
-  </div>
+  <!-- ===== RUNNING EXTRACTION, ERROR, NOTICE (shared by all layouts) ===== -->
+  <app-extraction-feedback
+    [state]="state"
+    (cancel)="cancelExtraction.emit()"
+    (dismissError)="dismissError.emit()"
+    (dismissWarning)="dismissWarning.emit()">
+  </app-extraction-feedback>
 
   <!-- ===== PREVIEW THUMBNAIL ===== -->
   <app-preview-thumbnail
@@ -50,28 +47,26 @@
   </app-preview-thumbnail>
 
   <!-- ===== FIELD GROUPS ===== -->
-  <section class="fields-section" *ngIf="_displayGroups.length">
-    <ng-container *ngFor="let group of _displayGroups; trackBy: trackByGroupId">
-      <div class="field-group" 
+  <section class="fields-section" *ngIf="_displayGroups.length" [attr.aria-busy]="state?.isExtracting ? 'true' : null">
+    <ng-container *ngFor="let group of _displayGroups; trackBy: trackByGroupId; let i = index">
+      <div class="field-group"
            *ngIf="(flatGroups || (group.isCore && showCoreFields) || (!group.isCore && showSpecialFields)) && (!readonly || (_visibleFieldsMap.get(group.id)?.length ?? 0) > 0)">
-        
-        <!-- Grey bar — edge-to-edge -->
-        <div class="group-header">
-          <mat-icon class="group-icon">{{ group.icon || getGroupIcon(group) }}</mat-icon>
-          <h3>{{ group.label }}</h3>
-        </div>
-        
-        <!-- Indented fields -->
+
+        <app-group-header [group]="group" [collapsible]="groupCollapse" [controls]="_uid + '-g' + i"></app-group-header>
+
         <div class="group-fields"
+             [id]="_uid + '-g' + i"
              [class.columns-2]="columns === 2"
              [class.columns-3]="columns === 3"
-             [class.columns-4]="columns === 4">
+             [class.columns-4]="columns === 4"
+             *ngIf="!(groupCollapse && group.collapsed)">
           <app-field
             *ngFor="let field of _visibleFieldsMap.get(group.id); trackBy: trackByFieldId"
             [field]="field"
             [readonly]="readonly"
-            [showActions]="showFieldActions"
             [highlightAi]="highlightAi"
+            [entry]="_entryControls.get(field.fieldId) ?? null"
+            (entryChange)="objectEntryChange.emit($event)"
             (valueChange)="fieldValueChange.emit({ fieldId: field.fieldId, value: $event })">
           </app-field>
         </div>
@@ -85,61 +80,23 @@
     <p>{{ 'EMPTY_STATE.NO_DATA' | translate }}</p>
   </section>
 
-  <!-- ===== FLOATING CONTROLS ===== -->
-  <div class="floating-controls" *ngIf="showFloatingControls">
-    <div class="floating-content-type" *ngIf="showContentType">
-      <div class="split-button">
-        <div class="split-button-label">
-          <mat-icon>{{ state?.contentTypeIcon || 'category' }}</mat-icon>
-          <span>{{ state?.contentTypeLabel || ('CONTENT_TYPE.SELECT' | translate) }}</span>
-        </div>
-        <button 
-          mat-icon-button
-          [matMenuTriggerFor]="floatingCtMenu" [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
-          <mat-icon>expand_more</mat-icon>
-        </button>
-      </div>
-      
-      <mat-menu #floatingCtMenu="matMenu">
-        <button 
-          mat-menu-item 
-          *ngFor="let ct of contentTypes"
-          (click)="selectContentType.emit(ct)"
-          [class.active]="state?.contentTypeLabel === ct.label">
-          <span>{{ ct.label }}</span>
-        </button>
-      </mat-menu>
-    </div>
-
-    <div class="action-buttons" *ngIf="!showContentTypeOnly">
-      <button 
-        mat-icon-button
-        *ngIf="showUploadButton"
-        [disabled]="!state?.filledFields || uploading || (state?.isExtracting ?? false)"
-        [disabledInteractive]="uploading || (state?.isExtracting ?? false)"
-        (click)="state?.isExtracting || upload.emit()"
-        [matTooltip]="'CONTROLS.UPLOAD' | translate" [attr.aria-label]="'CONTROLS.UPLOAD' | translate">
-        <mat-icon>cloud_upload</mat-icon>
-      </button>
-      <button 
-        mat-icon-button
-        *ngIf="showSaveButton"
-        [disabled]="!state?.filledFields"
-        (click)="submit.emit()"
-        [matTooltip]="'CONTROLS.SAVE' | translate" [attr.aria-label]="'CONTROLS.SAVE' | translate">
-        <mat-icon>save</mat-icon>
-      </button>
-      <button 
-        mat-icon-button
-        *ngIf="showResetButton"
-        (click)="reset.emit()"
-        [matTooltip]="'CONTROLS.RESET' | translate" [attr.aria-label]="'CONTROLS.RESET' | translate">
-        <mat-icon>refresh</mat-icon>
-      </button>
-    </div>
-    
-    <!-- Language Switcher -->
-    <app-language-switcher *ngIf="showLanguageSwitcher && !showContentTypeOnly"></app-language-switcher>
-  </div>
+  <!-- ===== FLOATING BAR (shared by all layouts) ===== -->
+  <app-floating-bar
+    *ngIf="showFloatingControls"
+    [state]="state"
+    [contentTypes]="contentTypes"
+    [readonly]="readonly"
+    [showContentType]="showContentType"
+    [showContentTypeOnly]="showContentTypeOnly"
+    [showLanguageSwitcher]="showLanguageSwitcher"
+    [showSaveButton]="showSaveButton"
+    [showUploadButton]="showUploadButton"
+    [showResetButton]="showResetButton"
+    [uploading]="uploading"
+    (selectContentType)="selectContentType.emit($event)"
+    (save)="submit.emit()"
+    (upload)="upload.emit()"
+    (reset)="reset.emit()">
+  </app-floating-bar>
 
 </div>

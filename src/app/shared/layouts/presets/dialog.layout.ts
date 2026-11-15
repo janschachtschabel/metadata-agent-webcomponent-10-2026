@@ -19,34 +19,22 @@ import { LayoutConfig } from '../layout.models';
  */
 export const DIALOG_LAYOUT: LayoutConfig = {
   name: 'dialog',
-  i18nKey: 'LAYOUT.DIALOG.NAME',
-  i18nDescription: 'LAYOUT.DIALOG.DESCRIPTION',
   elements: {
-    // Header
-    header: false,
-    closeButton: false,
-    
-    // Input - disabled for dialog
+    // Input
     inputArea: false,
-    extractButton: false,
-    resetButton: false,
-    
-    // Status - disabled for dialog
+
+    // Status
     statusBar: false,
-    contentTypeSelector: false,
-    progressBar: false,
-    
+
     // Fields
     coreFields: true,
     specialFields: true,
-    fieldActions: true,
-    groupCollapse: true,
-    
-    // Footer
-    footer: false,
-    
-    // Floating Controls - for save/cancel
+    fieldActions: false,
+    groupCollapse: false,
+
+    // Floating bar
     floatingControls: true,
+    contentTypeSelector: false,
     jsonLoader: false,
     saveButton: true,
     uploadButton: false,
@@ -55,14 +43,9 @@ export const DIALOG_LAYOUT: LayoutConfig = {
   },
   style: {
     borderless: true,
-    compact: true,
-    columns: 1,
-    cssClass: 'layout-dialog'
+    columns: 1
   },
   behavior: {
-    readonly: false,
-    emitChanges: true,
-    autoExtract: false,
-    contentTypeOnly: false
+    readonly: false
   }
 };

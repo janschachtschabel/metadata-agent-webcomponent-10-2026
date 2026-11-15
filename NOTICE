@@ -10,9 +10,8 @@ JavaScript packages to dist/3rdpartylicenses.txt.
 JavaScript, bundled into dist/main.js and dist/polyfills.js
 -----------------------------------------------------------
 
-Angular (@angular/animations, @angular/cdk, @angular/common, @angular/core,
-@angular/elements, @angular/forms, @angular/material,
-@angular/platform-browser)
+Angular (@angular/cdk, @angular/common, @angular/core, @angular/elements,
+@angular/forms, @angular/material, @angular/platform-browser)
   License: MIT
   Copyright (c) 2010-2026 Google LLC. https://angular.dev/license
 
@@ -25,14 +24,6 @@ zone.js
   Copyright (c) 2018 Olivier Combe
   Copyright (c) 2024 Andreas Löw / CodeAndWeb GmbH
 
-ngx-mat-timepicker
-  License: MIT (as declared in its package.json; the package ships no
-  license file)
-
-ts-luxon (dependency of ngx-mat-timepicker)
-  License: MIT
-  Copyright (c) 2025 Tony Samperi and other contributors
-
 RxJS
   License: Apache-2.0
   Copyright (c) 2015-2018 Google, Inc., Netflix, Inc., Microsoft Corp. and
@@ -42,8 +33,9 @@ RxJS
 Fonts, copied into dist/fonts/
 ------------------------------
 
-Material Icons (material-icons.woff2; the outlined icons "cancel" and
-"info_outline" as inline SVG in src/app/components/shared/svg-icon),
+Material Icons (material-icons.woff2; the outlined icons "cancel",
+"info_outline", "error_outline" and "help_outline" as inline SVG in
+src/app/components/shared/svg-icon),
 from the npm package "material-icons"
   License: Apache-2.0, full text in dist/fonts/LICENSE-material-icons.txt
   Material design icons are created by Google.

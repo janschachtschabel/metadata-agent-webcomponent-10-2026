@@ -1,41 +1,7 @@
 /**
- * Layout System - Central Export
- * 
- * Two main layouts with individually toggleable elements.
- * 
- * ## Usage
- * 
- * ### Via layout attribute:
- * ```html
- * <app-canvas layout="default"></app-canvas>
- * <app-canvas layout="default" [readonly]="true"></app-canvas>
- * ```
- * 
- * ### Via readonly:
- * ```html
- * <app-canvas layout="default" [readonly]="true"></app-canvas>
- * ```
- * 
- * ### Individual element control (works in any layout):
- * ```html
- * <app-canvas 
- *   layout="default"
- *   [showInputArea]="true"
- *   [showStatusBar]="true"
- *   [showCoreFields]="true"
- *   [showSpecialFields]="true"
- *   [showFooter]="true"
- *   [showFloatingControls]="true"
- *   [showFieldActions]="true">
- * </app-canvas>
- * ```
- * 
- * ## Layouts
- * 
- * | Layout | Use Case |
- * |--------|----------|
- * | `default` | Local, Standalone, Bookmarklet, Extension, Hosted |
- * | `readonly` | Use [readonly]="true" attribute on any layout |
+ * The seven layout presets by name; LayoutService resolves a layout name or
+ * alias (MODE_LAYOUT_MAP) to one of them. Which elements each layout shows by
+ * default is in presets/; the README of the repository has the matrix.
  */
 
 // Models

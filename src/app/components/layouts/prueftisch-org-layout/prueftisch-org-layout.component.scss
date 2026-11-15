@@ -39,28 +39,28 @@
 
   // Group Header — light gray background, icon + uppercase label, black bottom border
   .group-header {
-    display: flex;
-    align-items: center;
     gap: 12px;
     padding: 24px 24px;
     background: #f0f0f0;
     border-bottom: 1px solid #999999;
     margin: 0;
 
-    .group-icon {
+    // Inside app-group-header: its own view, hence ::ng-deep.
+    ::ng-deep .group-icon {
       font-size: 22px;
       width: 22px;
       height: 22px;
-      color: #6f6f6f;
+      color: #666666; // #6f6f6f had 4.4:1 on the grey bar (U-13)
     }
 
-    h3 {
-      margin: 0;
+    ::ng-deep h3 {
       font-family: 'Montserrat', sans-serif;
       font-size: 18px;
       font-weight: 400;
       color: #333333;
       letter-spacing: 0.5px;
+      // Upper case is a matter of looks: as text, a screen reader may spell it out (U-N).
+      text-transform: uppercase;
     }
   }
 
@@ -275,6 +275,51 @@
     cursor: default;
   }
 
+  // ===== READ-ONLY (this layout's own state): label and value as text (U-02) =====
+  .readonly-field {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+  }
+
+  .readonly-label {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 15px;
+    font-weight: 400;
+    color: #666666;
+    margin: 16px 0 2px 0;
+  }
+
+  .readonly-value {
+    font-family: 'Montserrat', 'open_sansregular', sans-serif;
+    font-size: 16px;
+    color: #000000;
+    padding-left: 4px;
+  }
+
+  // Several values: comma-separated inline text (no pill backgrounds)
+  .readonly-list {
+    display: block;
+
+    li {
+      display: inline;
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      color: #000000;
+      font-size: 16px;
+      font-weight: 400;
+
+      &::after {
+        content: ', ';
+      }
+      &:last-child::after {
+        content: '';
+      }
+    }
+  }
+
   // ===== SUPPORT TEXT — hide =====
   .support-text {
     display: none !important;
@@ -310,17 +355,6 @@
   }
 }
 
-// ===== FLOATING CONTROLS =====
-.floating-controls {
-  @include shared.floating-controls;
-
-  .floating-content-type {
-    .split-button {
-      @include shared.split-button;
-    }
-  }
-}
-
 // ===== EMPTY STATE =====
 .empty-state {
   display: flex;
@@ -346,24 +380,8 @@
   }
 }
 
-// Same banners as the other layouts — this one used to show no error at all.
-.extraction-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 16px;
-  padding: 10px 16px;
-  background: #fdecea;
-  border: 1px solid #f5c6cb;
-  border-radius: 8px;
-  color: #721c24;
-  font-size: 13px;
-
-  mat-icon { color: var(--md-error, #ba1a1a); flex-shrink: 0; }
-  span { flex: 1; line-height: 1.4; }
+// The banners and the progress line are app-extraction-feedback's; here only their place.
+app-extraction-feedback {
+  --feedback-margin: 8px 16px;
 }
 
-.extraction-warning {
-  @extend .extraction-error;
-  @include shared.extraction-warning-colors;
-}

@@ -11,7 +11,17 @@ export interface I18nString {
 }
 
 // ===== Field Types =====
-export type FieldDataType = 'string' | 'text' | 'array' | 'date' | 'datetime' | 'number' | 'boolean' | 'url' | 'uri' | 'geo';
+/**
+ * The datatypes a schema may declare (`system.datatype`): those the 2.0.0
+ * schemas use (array, boolean, date, datetime, integer, number, object,
+ * string, time, uri) and those the field component has a control for besides.
+ * object, integer, time and duration were missing here (audit 14.11., W-N).
+ */
+export type FieldDataType =
+  | 'string' | 'text' | 'array' | 'object' | 'json'
+  | 'date' | 'datetime' | 'time' | 'duration'
+  | 'number' | 'integer' | 'boolean'
+  | 'url' | 'uri' | 'geo';
 
 export enum FieldStatus {
   EMPTY = 'empty',
@@ -53,7 +63,8 @@ export interface VocabularyConcept {
 }
 
 export interface VocabularyInfo {
-  type: 'open' | 'closed' | 'mixed';
+  /** 'skos' (the type of most vocabularies in the 2.0.0 schemas) is closed like 'closed'. */
+  type: 'open' | 'closed' | 'mixed' | 'skos';
   source?: string;
   hierarchical?: boolean;
   concepts: VocabularyConcept[];
@@ -143,6 +154,19 @@ export interface CanvasFieldState {
   subFields?: CanvasFieldState[];
   path?: string;
   arrayIndex?: number;
+  /**
+   * On a subfield: the `@type` of the variant its object is shown as. The
+   * object is exported with it, or the next import could not tell the
+   * variants apart (W-LOG-03).
+   */
+  objectType?: string;
+  /**
+   * On a subfield: the entries of the parent's value as they were when the
+   * form was built; `arrayIndex` counts these. The way back lays the subfields
+   * over them and so keeps what the form does not show. Never written to -
+   * they are the host page's objects.
+   */
+  objectOrigins?: any[];
 }
 
 // ===== Field Group =====
@@ -191,39 +215,12 @@ export interface CanvasState {
   screenshotMethod: 'pageshot' | 'playwright';
 }
 
-// ===== Extraction Types =====
-export interface FieldExtractionTask {
-  field: CanvasFieldState;
-  userText: string;
-  priority: number;
-  retryAttempt?: number;
-  promptModifier?: string;
-}
-
-export interface ExtractionResult {
-  fieldId: string;
-  value: any;
-  confidence: number;
-  error?: string;
-}
-
 // ===== Layout Config =====
 // Note: Layout system has been moved to shared/layouts/
 // Import from '../layouts' for full LayoutConfig interface and presets.
 // This re-export is for backward compatibility.
 export type { LayoutConfig } from '../layouts';
 export { DEFAULT_LAYOUT } from '../layouts';
-
-// ===== Canvas Config =====
-import type { LayoutConfig as LayoutConfigType } from '../layouts';
-
-export interface CanvasConfig {
-  contextName: string;
-  layout: LayoutConfigType;
-  viewerMode: boolean;
-  readonly: boolean;
-  backgroundColor: string;
-}
 
 // ===== Initial State Factory =====
 export function createInitialState(): CanvasState {

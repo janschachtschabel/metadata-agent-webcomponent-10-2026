@@ -1,0 +1,26 @@
+@use '../../layouts/shared-layout-styles' as shared;
+
+:host {
+  display: block;
+  // The label may shrink in a narrow widget; the trigger keeps its width.
+  min-width: 0;
+}
+
+.split-button {
+  @include shared.split-button;
+
+  .split-button-label {
+    min-width: 0;
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  button[aria-disabled='true'] {
+    opacity: 0.5;
+    cursor: default;
+  }
+}

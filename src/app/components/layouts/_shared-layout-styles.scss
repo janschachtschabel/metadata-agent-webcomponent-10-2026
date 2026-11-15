@@ -16,10 +16,8 @@ $surface-container: #e2e8f6;
 
 $text-primary: #1f2a3d;
 $text-secondary: #5b667a;
-$text-muted: #8b95a5;
 
 $success: #2e7d32;
-$warning: #e65100;
 
 $border-color: #d4d9e3;
 $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
@@ -207,30 +205,8 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
   }
 }
 
-// The button inside a collapsible group heading (APG accordion pattern):
-// looks like the heading text, keeps a visible focus ring.
-@mixin group-toggle {
-  appearance: none;
-  background: none;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  color: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  text-align: start;
-  cursor: pointer;
-
-  &:focus-visible {
-    outline: 2px solid currentColor;
-    outline-offset: 2px;
-    border-radius: 2px;
-  }
-}
-
 // ===== EXTRACTION WARNING =====
-// Amber variant of a layout's .extraction-error: the result is usable but
+// Amber variant of the error banner (app-extraction-feedback): the result is usable but
 // incomplete or uncertain (failed fields, content type only guessed).
 @mixin extraction-warning-colors {
   background: #fff8e1;
@@ -275,20 +251,40 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
 }
 
 // ===== FLOATING CONTROLS =====
+// Centred by its margins; in a narrow widget its parts wrap instead of
+// standing out of it (audit 14.11., U-25).
 @mixin floating-controls {
   position: sticky;
   bottom: 16px;
   z-index: 100;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 16px;
+  row-gap: 8px;
   width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
   margin: 0 auto;
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   @media (prefers-reduced-motion: reduce) {
     animation: none;
+  }
+
+  // Up only. The keyframes carried a translateX(-50%) from a centring by
+  // `left: 50%` that is long gone: for 0.3 s the bar stood half its width to
+  // the left and then jumped into place (U-25).
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 
@@ -324,18 +320,6 @@ $shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
     &:disabled, &[aria-disabled='true'] {
       opacity: 0.38;
     }
-  }
-}
-
-// ===== ANIMATION =====
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
   }
 }
 

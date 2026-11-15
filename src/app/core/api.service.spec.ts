@@ -7,9 +7,9 @@
  * canvas's own message about an unusable answer.
  */
 
-import { of } from 'rxjs';
+import { Observable, of } from 'rxjs';
 
-import { ApiService } from './api.service';
+import { ApiService, REQUEST_TIMEOUT_MS } from './api.service';
 
 function apiAnswering(body: unknown): ApiService {
   const http = { post: () => of(body) } as any;
@@ -35,6 +35,61 @@ describe('ApiService.generate', () => {
 
     expect(response.metadata).toEqual({ 'cclom:title': 'Konzert in Weimar' });
     expect(response.processing.status).toBe('success');
+  });
+});
+
+/**
+ * Audit 14.11. (W-50): no call had a time limit. Behind a proxy that keeps the
+ * connection open, a schema never came and a hanging /upload held its button
+ * for good.
+ */
+describe('ApiService time limits', () => {
+  const logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} } as any;
+  /** An agent that never answers; counts how often a request was given up. */
+  function silentAgent(): { api: ApiService; givenUp: () => number } {
+    let unsubscribed = 0;
+    const never = () => new Observable(() => () => unsubscribed++);
+    return { api: new ApiService({ get: never, post: never } as any, logger), givenUp: () => unsubscribed };
+  }
+
+  beforeEach(() => jasmine.clock().install());
+  afterEach(() => jasmine.clock().uninstall());
+
+  async function outcomeAfter(call: Promise<unknown>, ms: number): Promise<string> {
+    let outcome = 'waiting';
+    call.then(() => (outcome = 'answered'), error => (outcome = error?.name));
+    jasmine.clock().tick(ms);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    return outcome;
+  }
+
+  it('gives a schema 30 s', async () => {
+    const { api, givenUp } = silentAgent();
+    const call = api.getSchema('default', 'latest', 'core.json');
+
+    expect(await outcomeAfter(call, 29_999)).toBe('waiting');
+    expect(await outcomeAfter(call, 2)).toBe('TimeoutError');
+    expect(givenUp()).withContext('the request is cancelled').toBe(1);
+  });
+
+  it('gives an upload 130 s - longer than the agent takes to give up itself (100 s)', async () => {
+    const { api } = silentAgent();
+    const call = api.upload({ metadata: {} });
+
+    expect(await outcomeAfter(call, 129_999)).toBe('waiting');
+    expect(await outcomeAfter(call, 2)).toBe('TimeoutError');
+  });
+
+  it('gives a generation 330 s - longer than the agent\'s own limit (300 s)', async () => {
+    const { api } = silentAgent();
+    const call = api.generate({ text: 'Ein Text' });
+
+    expect(await outcomeAfter(call, 329_999)).toBe('waiting');
+    expect(await outcomeAfter(call, 2)).toBe('TimeoutError');
+  });
+
+  it('names its limits', () => {
+    expect(REQUEST_TIMEOUT_MS).toEqual({ schema: 30_000, upload: 130_000, generate: 330_000 });
   });
 });
 

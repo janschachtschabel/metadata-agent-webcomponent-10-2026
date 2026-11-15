@@ -27,13 +27,14 @@ module.exports = function (config) {
       dir: require('path').join(__dirname, './coverage'),
       subdir: '.',
       reporters: [{ type: 'text-summary' }, { type: 'cobertura' }],
-      // Floor just below the coverage measured on 2026-10-18 after the fixes
-      // from the final audit (statements 75.44 %, branches 60.97 %, functions
-      // 72.83 %, lines 77.66 %; before: 66.90 / 50.85 / 61.95 / 69.52): a change
-      // that drops tests fails `ng test --code-coverage` instead of passing
-      // unnoticed. Raise it as coverage grows.
+      // Floor about four points below the coverage measured on 2026-11-14
+      // after the fixes from that day's audit (statements 88.65 %, branches
+      // 77.74 %, functions 89.80 %, lines 90.39 %; the floor of 2026-10-18,
+      // 75 / 60 / 72 / 77, had fallen 13 to 17 points behind - audit U-16): a
+      // change that drops tests fails `ng test --code-coverage` instead of
+      // passing unnoticed. Raise it as coverage grows.
       check: {
-        global: { statements: 75, branches: 60, functions: 72, lines: 77 },
+        global: { statements: 84, branches: 73, functions: 85, lines: 86 },
       },
     },
     reporters: ['progress', 'kjhtml'],

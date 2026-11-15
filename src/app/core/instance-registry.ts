@@ -24,6 +24,18 @@ export interface SharedInstanceState {
   /** What the current run extracts from; a type choice re-runs it for the new type. */
   runInput: RunInput | null;
   /**
+   * The source text and the run input from before the run that is out: what a
+   * run that fails or is cancelled puts back, so its text is no source of the
+   * form (audit 14.11., W-33). Null when no run is out.
+   */
+  runBefore: { userText: string; runInput: RunInput | null } | null;
+  /**
+   * Aborts the request of the current run while it is out. Whatever takes the
+   * scope over uses it (CanvasService.nextGeneration), and so does the registry
+   * when the last element of the instance is gone (W-PERF-01).
+   */
+  runAbort: AbortController | null;
+  /**
    * Runs a type choice cut short, by run number, with the run it put in their
    * place (null if none was started). The caller of the replaced run learns
    * from it whether its source made it into the form after all.
@@ -53,6 +65,56 @@ export interface SharedInstanceState {
    * export return them as 2.1.1 did; the upload does not (W-L1).
    */
   importedKeys: Set<string>;
+  /**
+   * Schemas the current form could not be built from (the load failed): the
+   * form lacks their fields, so it is not uploaded (audit 14.11., W-45).
+   * A schema leaves the set when its fields are built.
+   */
+  failedSchemas: Set<string>;
+  /**
+   * Imports that are still loading their schemas, and whether one finished
+   * since the last metadataChange. With the state, not in the element that
+   * started the import: the primary element of the instance reports, and it
+   * must neither report a half-built import of another element nor miss the
+   * finished one (W-35).
+   */
+  importsRunning: number;
+  importFinished: boolean;
+  /**
+   * The record of the last metadataChange of this instance, in the form the
+   * elements compare (CanvasComponent.reportMetadata). Shared, so an element
+   * promoted to primary knows what the host was told last (W-48).
+   */
+  reportedRecord: string | undefined;
+  /**
+   * True while the state change being delivered is an edit of the editor.
+   * The element that reports the record does so at once for an edit instead
+   * of after its debounce (W-36).
+   */
+  editing: boolean;
+}
+
+/** The bookkeeping of a new instance scope: everything but its state and value cache. */
+export function emptyBookkeeping(): Omit<SharedInstanceState, 'stateSubject' | 'fieldValueCache'> {
+  return {
+    components: new Set(),
+    primaryId: null,
+    generation: 0,
+    editsDuringRun: new Map(),
+    runInput: null,
+    runBefore: null,
+    runAbort: null,
+    takeovers: new Map(),
+    pendingTakeover: null,
+    importedValues: null,
+    schemaFieldIds: new Map(),
+    importedKeys: new Set(),
+    failedSchemas: new Set(),
+    importsRunning: 0,
+    importFinished: false,
+    reportedRecord: undefined,
+    editing: false,
+  };
 }
 
 /** Field values by field id with whether each came from the AI. */
@@ -89,16 +151,7 @@ export class InstanceRegistry {
       this.instances.set(instanceId, {
         stateSubject: new BehaviorSubject<CanvasState>(createInitialState()),
         fieldValueCache: new Map(),
-        components: new Set(),
-        primaryId: null,
-        generation: 0,
-        editsDuringRun: new Map(),
-        runInput: null,
-        takeovers: new Map(),
-        pendingTakeover: null,
-        importedValues: null,
-        schemaFieldIds: new Map(),
-        importedKeys: new Set(),
+        ...emptyBookkeeping(),
       });
     }
     return this.instances.get(instanceId)!;
@@ -138,6 +191,8 @@ export class InstanceRegistry {
     }
     // Clean up empty instances
     if (inst.components.size === 0) {
+      // Nobody is left to see the answer of a run that is still out.
+      inst.runAbort?.abort();
       this.instances.delete(instanceId);
     }
   }

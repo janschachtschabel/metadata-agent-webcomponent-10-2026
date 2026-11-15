@@ -24,44 +24,33 @@ import { LayoutConfig } from '../layout.models';
  */
 export const PRUEFTISCH_ORG_LAYOUT: LayoutConfig = {
   name: 'prueftisch-org',
-  i18nKey: 'LAYOUT.PRUEFTISCH_ORG.NAME',
-  i18nDescription: 'LAYOUT.PRUEFTISCH_ORG.DESCRIPTION',
   elements: {
-    header: false,
-    closeButton: false,
-    
+    // Input
     inputArea: false,
-    extractButton: false,
-    resetButton: false,
-    
+
+    // Status
     statusBar: false,
-    contentTypeSelector: true,
-    progressBar: false,
-    
+
+    // Fields
     coreFields: true,
     specialFields: true,
     fieldActions: false,
     groupCollapse: false,
-    
-    footer: false,
-    
+
+    // Floating bar
     floatingControls: true,
+    contentTypeSelector: true,
     jsonLoader: false,
     saveButton: false,
     uploadButton: false,
-    floatingResetButton: true,
+    floatingResetButton: false,
     languageSwitcher: true
   },
   style: {
     borderless: true,
-    compact: false,
-    columns: 1,
-    cssClass: 'layout-prueftisch-org'
+    columns: 1
   },
   behavior: {
-    readonly: true,
-    emitChanges: false,
-    autoExtract: false,
-    contentTypeOnly: false
+    readonly: true
   }
 };

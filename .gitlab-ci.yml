@@ -46,32 +46,94 @@ widget build and tests:
   # --code-coverage: the coverage floor in karma.conf.js only applies to a run
   # that collects coverage.
   - npx ng test --watch=false --browsers=ChromeHeadlessCI --code-coverage
+  # The production build is also the size check (audit 14.11., U-18/U-20): it
+  # fails when the initial bundle exceeds the error budget of angular.json
+  # (1.6 MB; 1.27 MB on 2026-11-14) and warns above 1.4 MB. Its type-check is
+  # tsconfig.app.json - main.ts and what it reaches, without the specs.
   - npx ng build --configuration production
-  # The deploy step's guard, into a scratch target: no Google Fonts, Vercel or
-  # PageShot host in the bundles, every font the stylesheet loads is present.
+  # The deploy step's guards, into a scratch target: only the three bundles as
+  # JavaScript in dist/, no host outside the allow-list in them, the texts of
+  # de.json/en.json inside main.js, every font the stylesheet loads present.
+  # It also writes elements-check/dist/build.json - widget version, build time
+  # and a SHA-256 of every delivered file and over all of them.
   - mkdir -p elements-check && node scripts/build-elements.js --target=elements-check
   artifacts:
     when: on_success
     expire_in: 1 week
     paths:
     - dist/
+    - elements-check/
 
-# The dev tools (Karma, webpack-dev-server, the Angular build chain) run here
-# and on developer machines, so their advisories matter too (audit DEP-03).
-# Not blocking: on 2026-10-18 npm reported 13 (11 high, 2 moderate) in karma,
-# braces, webpack-dev-server, sockjs and uuid, and every fix it offered was a
-# `--force` downgrade (karma 4, build-angular 0.10) that would break the
-# Angular 21 toolchain. Since 2026-10-19 package.json overrides sockjs' uuid
-# (11.1.1), which leaves the 11 braces entries: braces has no fixed release,
-# they go with the move to Vitest and @angular/build:application. A failing
-# job here is a yellow warning in the pipeline; the shipped bundle stays
-# guarded by the blocking --omit=dev audit above.
+# How the copy of the bundle in the agent's repository is checked against a
+# build (audit 14.11., U-17/U-20). The job itself belongs to the agent's
+# pipeline - that repository holds the files. Two checks:
+#
+# 1. The files are one complete delivery of build-elements.js: recompute
+#    build.json from src/static/widget (dist/ and assets/i18n/, without
+#    build.json itself). Per file the SHA-256; `hash` is the SHA-256 of the
+#    lines "<sha256>  <path>\n" in the order of the paths, i.e. of the output
+#    of `sha256sum`. A bundle edited by hand, copied in part, mixed from two
+#    builds or with a file too many or too few does not match:
+#
+#      cd src/static/widget && python - <<'PY'
+#      import hashlib, json, pathlib, sys
+#      stamp = json.loads(pathlib.Path("dist/build.json").read_text(encoding="utf-8"))
+#      found = {p.as_posix() for d in ("dist", "assets/i18n") for p in pathlib.Path(d).rglob("*") if p.is_file()} - {"dist/build.json"}
+#      sums = {p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() for p in sorted(found)}
+#      total = hashlib.sha256("".join(f"{s}  {p}\n" for p, s in sums.items()).encode()).hexdigest()
+#      bad = sorted(p for p in found | set(stamp["files"]) if sums.get(p) != stamp["files"].get(p))
+#      print("widget", stamp["version"], "built", stamp["builtAt"], "-", "matches build.json" if not bad and total == stamp["hash"] else "DIFFERS: " + ", ".join(bad or ["hash"]))
+#      sys.exit(1 if bad or total != stamp["hash"] else 0)
+#      PY
+#
+# 2. It is the build of a known pipeline of this repository: compare `hash`
+#    (and `version`) of the agent's dist/build.json with
+#    elements-check/dist/build.json from the artifacts of the job above.
+#    `builtAt` and the two hashes of a build made elsewhere from the same
+#    commit are not expected to be equal - compare with the artifact that was
+#    delivered, not with a rebuild.
+
+# ESLint with angular-eslint: the recommended rules for TypeScript and
+# templates and the template accessibility rules (audit 14.11., U-19/U-20).
+# Blocking. Errors only - rules the code does not meet yet are warnings or
+# off, each with its reason, in eslint.config.js.
+lint:
+  stage: test
+  interruptible: true
+  image: node:22.20.0-bookworm
+  needs: []
+  cache:
+    key:
+      files:
+      - package-lock.json
+    paths:
+    - .npm
+  script:
+  - npm ci --cache .npm --prefer-offline --no-audit --no-fund
+  - npm run lint
+
+# The dev tools (Karma, webpack-dev-server, the Angular build chain, ESLint)
+# run here and on developer machines, so their advisories matter too (audit
+# DEP-03).
+#
+# State of 2026-11-14 (audit U-10): after `npm audit fix` and an `npm update`
+# within the ranges of package.json (Angular 21.2.25 -> 21.2.26,
+# build-angular -> 21.2.30; lockfile only) no advisory of level high is left;
+# before it there were 30 (1 low, 22 moderate, 7 high). None of them was in
+# braces or karma - the reason this comment gave until then described a state
+# that was gone.
+#
+# Blocking at `high`. The 25 moderate ones that were left came from two
+# advisories (glob 13 below pacote in @angular/cli, minimatch 10 below
+# typescript-eslint); `overrides` in package.json lift exactly those to the
+# fixed versions, so the run is clean (0 advisories). Remove the overrides
+# once @angular/cli and typescript-eslint ask for the fixed versions
+# themselves. The shipped bundle is guarded by the --omit=dev audit above.
 audit dev dependencies:
   stage: test
   interruptible: true
   image: node:22.20.0-bookworm
   needs: []
-  allow_failure: true
   script:
   - npm audit --audit-level=high
 

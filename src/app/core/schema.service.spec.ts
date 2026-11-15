@@ -7,6 +7,7 @@
  */
 
 import { SchemaService } from './schema.service';
+import { WidgetDebug } from './debug';
 
 /**
  * Review 18.10.: a core schema requested before the widget had set its
@@ -16,7 +17,7 @@ import { SchemaService } from './schema.service';
 describe('SchemaService.loadCoreSchema during startup', () => {
   function service(getSchema: jasmine.Spy): SchemaService {
     const config = { debug: () => {}, error: () => {}, info: () => {} };
-    return new SchemaService({} as any, config as any, {} as any, { getSchema } as any);
+    return new SchemaService(config as any, {} as any, { getSchema } as any);
   }
 
   it('waits for the context that is being set instead of falling back to default', async () => {
@@ -95,7 +96,7 @@ describe('SchemaService.loadCoreSchema during startup', () => {
 describe('SchemaService.loadContentTypeSchema', () => {
   function service(getSchema: jasmine.Spy): SchemaService {
     const config = { debug: () => {}, error: () => {} };
-    return new SchemaService({} as any, config as any, {} as any, { getSchema } as any);
+    return new SchemaService(config as any, {} as any, { getSchema } as any);
   }
 
   it('reports a schema that could not be loaded', async () => {
@@ -118,11 +119,95 @@ describe('SchemaService.loadContentTypeSchema', () => {
   });
 });
 
+/**
+ * Audit 14.11. (W-N): a 200 that is no schema - another service behind the
+ * address, a proxy's JSON page - ended in "Cannot read properties of
+ * undefined (reading 'length')".
+ */
+describe('SchemaService and an answer that is no schema', () => {
+  const NOT_A_SCHEMA: unknown[] = [{}, { detail: 'Not Found' }, { fields: 'none' }, null, 'ok', []];
+
+  function service(answer: unknown, instant = (key: string) => key): SchemaService {
+    const config = { debug: () => {}, error: () => {}, info: () => {} };
+    return new SchemaService(config as any, { instant } as any, { getSchema: () => Promise.resolve(answer) } as any);
+  }
+
+  for (const answer of NOT_A_SCHEMA) {
+    it(`fails readably for the core schema (${JSON.stringify(answer)})`, async () => {
+      await expectAsync(service(answer).loadCoreSchema())
+        .toBeRejectedWithError(/not a result of the metadata agent.*api-url/);
+    });
+
+    it(`fails readably for a content-type schema (${JSON.stringify(answer)})`, async () => {
+      await expectAsync(service(answer).loadContentTypeSchema('event.json'))
+        .toBeRejectedWithError(/not a result of the metadata agent/);
+    });
+  }
+
+  it('says so in the language of the widget', async () => {
+    const german = (key: string) => (key === 'ALERTS.ANSWER_UNREADABLE' ? 'Die Antwort ist kein Ergebnis des Metadaten-Agenten.' : key);
+
+    await expectAsync(service({}, german).loadCoreSchema())
+      .toBeRejectedWithError('Die Antwort ist kein Ergebnis des Metadaten-Agenten.');
+  });
+
+  it('asks again next time: nothing of the answer is kept', async () => {
+    const getSchema = jasmine.createSpy('getSchema').and.returnValues(
+      Promise.resolve({ detail: 'Not Found' }),
+      Promise.resolve({ fields: [{ id: 'cclom:title' }], groups: [] }),
+    );
+    const schemas = new SchemaService({ debug: () => {}, error: () => {} } as any, { instant: (key: string) => key } as any, { getSchema } as any);
+
+    await expectAsync(schemas.loadCoreSchema()).toBeRejected();
+
+    expect((await schemas.loadCoreSchema()).fields.map(f => f.id)).toEqual(['cclom:title']);
+  });
+
+  it('takes a schema without fields of its own for what it is: an empty list', async () => {
+    expect((await service({ fields: [] }).loadCoreSchema()).fields).toEqual([]);
+  });
+});
+
+/**
+ * Audit 14.11. (W-N): the groups asked for on their own (getGroups) were
+ * cached without the check the fields have - a context switch while the
+ * request was out stored the old context's groups under the new one.
+ */
+describe('SchemaService.getGroups across a context switch', () => {
+  it('does not keep groups of the previous context that answered after the switch', async () => {
+    let answerDefault!: (value: unknown) => void;
+    const getSchema = jasmine.createSpy('getSchema').and.callFake((context: string) =>
+      context === 'default'
+        ? new Promise(resolve => (answerDefault = resolve))
+        : Promise.resolve({ fields: [], groups: [{ id: 'mds-group' }] }));
+    const schemas = new SchemaService({ debug: () => {}, error: () => {}, info: () => {} } as any, {} as any, { getSchema } as any);
+    await schemas.setContext('default', 'latest');
+
+    const stale = schemas.getGroups('event.json');
+    await schemas.setContext('mds_oeh', 'latest');
+    answerDefault({ fields: [], groups: [{ id: 'default-group' }] });
+    expect(await stale).withContext('the caller that asked gets its answer').toEqual([{ id: 'default-group' }]);
+
+    expect(await schemas.getGroups('event.json')).toEqual([{ id: 'mds-group' }]);
+  });
+
+  it('keeps the groups of the current context: asked once', async () => {
+    const getSchema = jasmine.createSpy('getSchema').and.resolveTo({ fields: [], groups: [{ id: 'g' }] });
+    const schemas = new SchemaService({ debug: () => {}, error: () => {}, info: () => {} } as any, {} as any, { getSchema } as any);
+    await schemas.setContext('default', 'latest');
+
+    await schemas.getGroups('event.json');
+    await schemas.getGroups('event.json');
+
+    expect(getSchema).toHaveBeenCalledTimes(1);
+  });
+});
+
 /** Final audit 18.10. (L-11). */
 describe('SchemaService content-type schemas', () => {
   function service(getSchema: jasmine.Spy): SchemaService {
     const config = { debug: () => {}, error: () => {}, info: () => {} };
-    return new SchemaService({} as any, config as any, {} as any, { getSchema } as any);
+    return new SchemaService(config as any, {} as any, { getSchema } as any);
   }
 
   it('asks once for a content-type schema while a request for it is out', async () => {
@@ -169,5 +254,34 @@ describe('SchemaService content-type schemas', () => {
 
     expect(schemas.getFieldById('schema:location', 'organization.json')?.system?.datatype).toBe('string');
     expect(schemas.getFieldById('schema:location', 'event.json')?.system?.datatype).toBe('array');
+  });
+});
+
+/**
+ * Audit 13.11. (W-ARCH-01): every start wrote "Context set: …" into the
+ * console of the host page. Only with the widget's debug switch now.
+ */
+describe('SchemaService console output', () => {
+  let info: jasmine.Spy;
+  let schemas: SchemaService;
+
+  beforeEach(() => {
+    info = jasmine.createSpy('config.info');
+    schemas = new SchemaService({ debug: () => {}, error: () => {}, info } as any, {} as any, {} as any);
+  });
+  afterEach(() => (WidgetDebug.enabled = false));
+
+  it('says nothing about the context in the host page\'s console', async () => {
+    await schemas.setContext('mds_oeh', 'latest');
+
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('names the context with debug switched on', async () => {
+    WidgetDebug.enabled = true;
+
+    await schemas.setContext('mds_oeh', 'latest');
+
+    expect(info).toHaveBeenCalledWith('Context set: mds_oeh vlatest');
   });
 });

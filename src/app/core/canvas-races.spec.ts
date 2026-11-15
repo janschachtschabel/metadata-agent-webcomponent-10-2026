@@ -121,6 +121,8 @@ describe('CanvasService runs that have been overtaken', () => {
       getFieldById: (id: string) => byId[id],
       getActiveLanguage: () => 'de',
       getContextName: () => 'default',
+      getVersion: () => 'latest',
+      getSchemaVersion: () => 'vlatest',
       localizeString: (v: any) => (typeof v === 'string' ? v : v?.de || ''),
       localizeVocabulary: () => [],
       localizeFieldFull: (f: any) => ({ label: f.label?.de || f.id }),

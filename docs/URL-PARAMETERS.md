@@ -1,72 +1,79 @@
-# URL-Parameter der Standalone-Seite
+# URL parameters of the standalone page
 
-Gilt nur für die eigene Standalone-Seite des Widgets (`index.html` mit
-`<app-root data-metadata-agent-app>`). Eingebettet als
-`<metadata-agent-canvas>` werden dieselben Einstellungen als Attribute bzw.
-Properties gesetzt (README, Abschnitt „Attribute“); die Seiten-URL wird dort
-nicht gelesen.
+**English** · [Deutsch](URL-PARAMETERS.de.md)
 
-Quelle: `src/app/app.component.ts` (`parseQueryParams`). Nicht angegebene
-Parameter lassen den Wert des Widgets bzw. des Layouts unverändert.
+Applies only to the widget's own standalone page (`index.html` with
+`<app-root data-metadata-agent-app>`). Embedded as `<metadata-agent-canvas>`,
+the same settings are attributes or properties
+([README](../README.md#attributes-and-properties)); the page URL is not read
+there.
 
-## Verbindung und Daten (nur lokal)
+Source: `src/app/app.component.ts` (`parseQueryParams`). A parameter that is not
+given leaves the value of the widget or of the layout as it is.
 
-`apiUrl` und `dataUrl` werden **nur auf `localhost`, `127.0.0.1` und `[::1]`**
-gelesen. Auf einer ausgelieferten Seite könnte ein Link sonst jedes Hochladen
-und jeden Datensatz an einen anderen Server schicken.
+## Connection and data (local only)
 
-| Parameter | Wert | Wirkung |
+`apiUrl` and `dataUrl` are read **only on `localhost`, `127.0.0.1` and
+`[::1]`**. On a deployed page a link could otherwise send every upload and every
+record to another server.
+
+| Parameter | Value | Effect |
 |---|---|---|
-| `apiUrl` | URL | Adresse des Metadata-Agents (sonst aus der Umgebung) |
-| `dataUrl` | URL | JSON laden und wie `metadata-input` importieren |
+| `apiUrl` | URL | Address of the Metadata Agent (otherwise `window.__ENV.agentUrl`, then the address the scripts were loaded from, then the same origin) |
+| `dataUrl` | URL | Load JSON and import it like `metadata-input` |
 
 ## Schema
 
-| Parameter | Wert | Standard |
+| Parameter | Value | Default |
 |---|---|---|
-| `context` oder `contextName` | Kontextname, z. B. `default`, `mds_oeh` | `default` |
-| `version` oder `schemaVersion` | Version, z. B. `2.0.0` | `latest` |
+| `context` or `contextName` | Context name, e.g. `default`, `mds_oeh` (`context` wins where both are given) | `default` |
+| `version` or `schemaVersion` | Version, e.g. `2.0.0` (`version` wins where both are given) | `latest` |
 
-## Layout und Anzeige
+## Layout and display
 
-| Parameter | Wert | Wirkung |
+| Parameter | Value | Effect |
 |---|---|---|
-| `layout` | `default`, `plugin`, `dialog`, `detail`, `clean`, `prueftisch`, `prueftisch-org` | Layout; Aliase wie `metadatenpruefdialog` (→ `clean`) oder `extension` (→ `plugin`) gelten weiter |
-| `columns` | `1` bis `4` | Spaltenzahl (sonst Vorgabe des Layouts) |
-| `flatGroups` | `true` / `false` | Alle Gruppen eines Schemas zu einer zusammenfassen |
-| `readonly` | `true` / `false` | Nur lesen |
-| `viewerMode` oder `viewer` | `true` / `false` | Alter Name für `readonly` |
-| `borderless` | `true` / `false` | Ohne Rahmen und Schatten |
-| `highlightAi` | alles außer `false` schaltet ein | KI-Werte hervorheben; ohne Parameter **aus** |
-| `inputMode` | `text`, `url`, `nodeId` | Eingabeart (Standard `text`) |
+| `layout` | `default`, `plugin`, `dialog`, `detail`, `clean`, `prueftisch`, `prueftisch-org` | Layout; aliases such as `metadatenpruefdialog` (→ `clean`) or `extension` (→ `plugin`) still apply |
+| `columns` | `1` to `4` | Number of columns (otherwise the layout's default) |
+| `flatGroups` | `true` / `false` | All fields in one group |
+| `readonly` | `true` / `false` | Read-only |
+| `viewerMode` or `viewer` | `true` / `false` | Old name for `readonly`; `readonly` wins where both are given |
+| `borderless` | `true` / `false` | No frame, no shadow |
+| `highlightAi` | anything but `false` switches it on | Highlight AI values; **off** without the parameter |
+| `inputMode` | `text`, `url`, `nodeId` | Input mode (default `text`) |
 
-## Bedienelemente
+## Controls
 
-`true` zeigt, jeder andere Wert verbirgt; ohne Parameter gilt die Vorgabe des Layouts.
+`true` shows, any other value hides; without the parameter the layout's default
+applies.
 
 | Parameter | Element |
 |---|---|
-| `showStatusBar` | Statusleiste |
-| `controls` | Schwebende Steuerelemente |
-| `showContentType` | Inhaltstyp-Auswahl |
-| `showContentTypeOnly` | Nur die Inhaltstyp-Auswahl in den Steuerelementen |
-| `showSaveButton` | Speichern |
-| `showUploadButton` | Hochladen ins Repository |
-| `showJsonLoader` | JSON laden |
-| `showLanguageSwitcher` | Sprachumschalter |
-| `showResetButton` | Zurücksetzen |
+| `showStatusBar` | Status bar |
+| `controls` | Floating bar |
+| `showContentType` | Content-type button |
+| `showContentTypeOnly` | Only the content-type button in the floating bar |
+| `showSaveButton` | Save |
+| `showUploadButton` | Upload to the repository |
+| `showJsonLoader` | Load JSON |
+| `showLanguageSwitcher` | Language switch |
+| `showResetButton` | Reset |
 
-Weitere Attribute des Elements (z. B. `show-input-area`, `show-core-fields`,
-`show-preview`, `enable-screenshot`) haben keinen URL-Parameter.
+Save, upload and reset exist in the layouts `default`, `plugin` and `dialog`,
+the JSON loader in `default` only
+([README](../README.md#defaults-per-layout)).
 
-## Was das Widget an den Agenten sendet
+Other attributes of the element (e.g. `show-input-area`, `show-core-fields`,
+`show-preview`, `enable-screenshot`, `language`) have no URL parameter.
 
-Die Extraktion ruft `POST /generate` auf: Text mit `text`, eine URL mit
-`input_source: "url"`, `source_url` und `extraction_method: "browser"`, eine
-Node-ID mit `input_source: "node_id"` und `node_id`. Die vollständige
-Beschreibung steht in der API-Dokumentation des Agenten (`/docs`).
+## What the widget sends to the agent
 
-## Beispiele
+An extraction calls `POST /generate`: a text with `text`, a URL with
+`input_source: "url"`, `source_url` and `extraction_method: "browser"`, a node
+ID with `input_source: "node_id"` and `node_id`. The full description is in the
+agent's API documentation (`/docs`).
+
+## Examples
 
 ```
 http://localhost:4200/?layout=clean&showStatusBar=true

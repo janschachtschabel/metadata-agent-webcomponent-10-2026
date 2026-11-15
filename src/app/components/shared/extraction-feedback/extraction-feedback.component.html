@@ -1,0 +1,25 @@
+<!-- A run is out: say so, and let the editor stop it. The start and the end are
+     announced by the canvas's live region; this line is not one. -->
+<div class="extraction-progress" *ngIf="state?.isExtracting">
+  <span class="progress-text" [id]="progressLabelId">{{ 'PROGRESS.EXTRACTION_RUNNING' | translate }}</span>
+  <button type="button" mat-button class="btn-cancel"
+          (click)="cancel.emit()"
+          [attr.aria-label]="'PROGRESS.CANCEL_EXTRACTION' | translate">{{ 'COMMON.CANCEL' | translate }}</button>
+  <mat-progress-bar mode="indeterminate" [attr.aria-labelledby]="progressLabelId"></mat-progress-bar>
+</div>
+
+<div class="extraction-error" *ngIf="state?.extractionError" role="alert">
+  <mat-icon aria-hidden="true"><app-svg-icon name="error_outline"></app-svg-icon></mat-icon>
+  <span>{{ state!.extractionError }}</span>
+  <button type="button" mat-icon-button (click)="dismissError.emit()" [attr.aria-label]="'COMMON.CLOSE' | translate">
+    <mat-icon aria-hidden="true">close</mat-icon>
+  </button>
+</div>
+
+<div class="extraction-warning" *ngIf="state?.extractionWarning" role="status">
+  <mat-icon aria-hidden="true">warning</mat-icon>
+  <span>{{ state!.extractionWarning }}</span>
+  <button type="button" mat-icon-button (click)="dismissWarning.emit()" [attr.aria-label]="'COMMON.CLOSE' | translate">
+    <mat-icon aria-hidden="true">close</mat-icon>
+  </button>
+</div>

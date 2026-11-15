@@ -41,6 +41,28 @@ export function isoDate({ year, month, day }: DateParts): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+/** A real day in ISO form ("YYYY-MM-DD", nothing after it): what a date field stores. */
+export function isIsoDate(text: string): boolean {
+  const iso = text.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return !!iso && checked(iso[1], iso[2], iso[3]) !== null;
+}
+
+/**
+ * `edited` ("YYYY-MM-DDTHH:MM", what the form produces) with the seconds and
+ * the UTC offset `previous` had. The form shows and edits day, hour and
+ * minute; "…T10:00:00+02:00" came back as "…T11:00" after the hour was
+ * changed - another moment in time for everyone who reads the offset
+ * (audit 14.11., W-47).
+ */
+export function keepSecondsAndOffset(edited: string, previous: unknown): string {
+  const before = typeof previous === 'string'
+    ? previous.match(/T\d{2}:\d{2}(:\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/)
+    : null;
+  if (!before) return edited;
+  const [, seconds, offset] = before;
+  return `${edited}${seconds ?? (offset ? ':00' : '')}${offset ?? ''}`;
+}
+
 /** "HH:MM" from hours and minutes in range; null otherwise. */
 function time(hours: string, minutes: string): string | null {
   if (+hours > 23 || +minutes > 59) return null;

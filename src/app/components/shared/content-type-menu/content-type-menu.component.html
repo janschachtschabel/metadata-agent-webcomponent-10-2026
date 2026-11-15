@@ -1,0 +1,28 @@
+<div class="split-button">
+  <div class="split-button-label">
+    <mat-icon>{{ state?.contentTypeIcon || 'category' }}</mat-icon>
+    <span>{{ state?.contentTypeLabel || ('CONTENT_TYPE.NOT_DETECTED' | translate) }}</span>
+  </div>
+  <button type="button"
+    mat-icon-button
+    class="split-button-trigger"
+    [matMenuTriggerFor]="typeMenu"
+    [disabled]="readonly || busy"
+    [disabledInteractive]="busy"
+    [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
+    <mat-icon>expand_more</mat-icon>
+  </button>
+</div>
+
+<mat-menu #typeMenu="matMenu">
+  <button type="button"
+    mat-menu-item
+    role="menuitemradio"
+    *ngFor="let type of contentTypes"
+    [attr.aria-checked]="isChosen(type)"
+    [class.active]="isChosen(type)"
+    (click)="selectContentType.emit(type)">
+    <span>{{ type.label }}</span>
+    <mat-icon *ngIf="isChosen(type)">check</mat-icon>
+  </button>
+</mat-menu>

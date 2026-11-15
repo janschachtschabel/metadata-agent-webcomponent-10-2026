@@ -1,6 +1,42 @@
 <!-- Only render actual input fields, skip parent containers -->
 <div class="canvas-field" [ngClass]="_statusClass" [class.readonly-mode]="readonly" *ngIf="!field.isParent">
 
+  <!-- Read-only: the value as text - wrapped in full, URLs as links - and not
+       as a disabled edit field, which cuts a long value off, cannot be focused
+       or scrolled and is announced as "unavailable" (audit 14.11., U-02). -->
+  @if (readonly) {
+    <div class="readonly-field" role="group" [attr.aria-labelledby]="supportId + '-label'">
+      <div class="readonly-label" [id]="supportId + '-label'">
+        <ng-container *ngIf="field.parentFieldId">{{ field.parentFieldLabel }} ({{ field.label }})</ng-container>
+        <ng-container *ngIf="!field.parentFieldId">{{ field.label }}</ng-container>
+        <span *ngIf="showAiOrigin" class="ai-origin"><mat-icon class="ai-origin-icon" aria-hidden="true">auto_awesome</mat-icon><span class="sr-only">{{ 'FIELD.AI_SUGGESTION' | translate }}</span></span>
+      </div>
+      @if (_readonlyAsList) {
+        <ul class="readonly-value readonly-list">
+          @for (item of _readonlyItems; track $index) {
+            <li>
+              @if (item.href) {
+                <a [href]="item.href" target="_blank" rel="noopener noreferrer">{{ item.text }}</a>
+              } @else {
+                <span>{{ item.text }}</span>
+              }
+            </li>
+          }
+        </ul>
+      } @else {
+        <div class="readonly-value">
+          @for (item of _readonlyItems; track $index) {
+            @if (item.href) {
+              <a [href]="item.href" target="_blank" rel="noopener noreferrer">{{ item.text }}</a>
+            } @else {
+              <span>{{ item.text }}</span>
+            }
+          }
+        </div>
+      }
+    </div>
+  } @else {
+
   <!-- Radio fields rendered outside mat-form-field (no MatFormFieldControl needed) -->
   <ng-container *ngIf="_isRadioField">
     <div class="radio-field-label" [id]="supportId + '-label'">
@@ -11,9 +47,9 @@
     </div>
     <!-- Required, invalid and the support text are announced, not only shown (U-12). -->
     <mat-radio-group
-      [value]="field.value"
+      [value]="_radioValue"
       (change)="onRadioChange($event.value)"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"
+      [disabled]="field.status === FieldStatus.EXTRACTING"
       [attr.aria-labelledby]="supportId + '-label'"
       [attr.aria-required]="field.isRequired ? 'true' : null"
       [attr.aria-invalid]="validationError ? 'true' : null"
@@ -44,66 +80,71 @@
       <span *ngIf="showAiOrigin" class="ai-origin"><mat-icon class="ai-origin-icon" aria-hidden="true">auto_awesome</mat-icon><span class="sr-only">{{ 'FIELD.AI_SUGGESTION' | translate }}</span></span>
     </mat-label>
 
+    <!-- Calendars and clocks exist for the fields that have one (audit 14.11.,
+         U-18): each input in a block with its picker, the toggle buttons in
+         blocks of their own for the suffix slot (see FieldPartDirective). -->
+
     <!-- Date field with calendar picker -->
-    <input
-      *ngIf="field.datatype === 'date' && !_chipInput"
-      matInput
-      [required]="field.isRequired"
-      [errorStateMatcher]="errorMatcher"
-      [aria-describedby]="describedBy"
-      [matDatepicker]="datePicker"
-      [(ngModel)]="dateValue"
-      (dateChange)="onDateChange($event)"
-      [placeholder]="field.description || placeholderDate"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
-    <mat-datepicker-toggle *ngIf="field.datatype === 'date' && !_chipInput" matIconSuffix [for]="datePicker"></mat-datepicker-toggle>
-    <mat-datepicker #datePicker></mat-datepicker>
+    @if (field.datatype === 'date' && !_chipInput) {
+      <input
+        matInput
+        [required]="field.isRequired"
+        [errorStateMatcher]="errorMatcher"
+        [aria-describedby]="describedBy"
+        [matDatepicker]="datePicker"
+        [(ngModel)]="dateValue"
+        (dateChange)="onDateChange($event)"
+        [placeholder]="placeholderDate"
+        [disabled]="field.status === FieldStatus.EXTRACTING"/>
+      <mat-datepicker #datePicker appFieldPart></mat-datepicker>
+    }
 
     <!-- DateTime field: editable text input + date picker + time picker -->
-    <input
-      *ngIf="field.datatype === 'datetime' && !_chipInput"
-      matInput
-      [required]="field.isRequired"
-      [errorStateMatcher]="errorMatcher"
-      [aria-describedby]="describedBy"
-      type="text"
-      [(ngModel)]="inputValue"
-      (blur)="onDateTimeBlur()"
-      [placeholder]="field.description || placeholderDateTime"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
-    <!-- Hidden anchors for the pickers; their toggles take the disabled state from them -->
-    <!-- Hidden input for date picker binding -->
-    <input *ngIf="field.datatype === 'datetime' && !_chipInput" [matDatepicker]="dateTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" (dateChange)="onDateTimePickerSelect($event)" style="display:none"/>
-    <mat-datepicker-toggle *ngIf="field.datatype === 'datetime' && !_chipInput" matIconSuffix [for]="dateTimePicker"></mat-datepicker-toggle>
-    <mat-datepicker #dateTimePicker></mat-datepicker>
-    <!-- Hidden input for time picker binding -->
-    <input *ngIf="field.datatype === 'datetime' && !_chipInput" [ngxMatTimepicker]="dateTimeTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" [format]="24" [value]="dateTimeTimeValue" tabindex="-1" aria-hidden="true" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
-    <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'datetime' && !_chipInput" matIconSuffix [for]="dateTimeTimePicker">
-      <!-- A name for the toggle's button: it had none (T-2). -->
-      <span ngxMatTimepickerToggleIcon><mat-icon aria-hidden="true">schedule</mat-icon><span class="sr-only">{{ 'FIELD.OPEN_CLOCK' | translate }}</span></span>
-    </ngx-mat-timepicker-toggle>
-    <ngx-mat-timepicker #dateTimeTimePicker [format]="24" (timeChanged)="onDateTimeTimeChange($event)"></ngx-mat-timepicker>
+    @if (field.datatype === 'datetime' && !_chipInput) {
+      <input
+        matInput
+        [required]="field.isRequired"
+        [errorStateMatcher]="errorMatcher"
+        [aria-describedby]="describedBy"
+        type="text"
+        [(ngModel)]="inputValue"
+        (blur)="onDateTimeBlur()"
+        [placeholder]="placeholderDateTime"
+        [disabled]="field.status === FieldStatus.EXTRACTING"/>
+      <!-- Anchors for the pickers; their toggles take the disabled state from them -->
+      <input [matDatepicker]="dateTimePicker" [disabled]="field.status === FieldStatus.EXTRACTING" (dateChange)="onDateTimePickerSelect($event)" style="display:none"/>
+      <mat-datepicker #dateTimePicker appFieldPart></mat-datepicker>
+      <input class="clock-anchor" [matTimepicker]="dateTimeClock" [matTimepickerOpenOnClick]="false" [value]="clockValue" [disabled]="field.status === FieldStatus.EXTRACTING" tabindex="-1" [attr.aria-label]="'FIELD.CHOOSE_TIME' | translate"/>
+      <mat-timepicker #dateTimeClock appFieldPart interval="15m" (selected)="onDateTimeTimePicked($event.value)" (closed)="focusInput()"></mat-timepicker>
+    }
 
-    <!-- Time field: typed (HH:MM) or picked on the clock dial from the toggle (U-14).
-         The picker directive sits on a hidden input: on the typed one it parsed
-         the text first and replaced it ("Invalid DateTime", 9.30 refused). -->
-    <input
-      *ngIf="field.datatype === 'time' && !_chipInput"
-      #typedTime
-      matInput
-      [required]="field.isRequired"
-      [errorStateMatcher]="errorMatcher"
-      [aria-describedby]="describedBy"
-      [(ngModel)]="inputValue"
-      (change)="onTimeTyped($any($event.target).value)"
-      [placeholder]="field.description || 'HH:MM'"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
-    <input *ngIf="field.datatype === 'time' && !_chipInput" [ngxMatTimepicker]="timePicker" [disabled]="field.status === FieldStatus.EXTRACTING || readonly" [format]="24" [value]="field.value" tabindex="-1" aria-hidden="true" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;overflow:hidden"/>
-    <ngx-mat-timepicker-toggle *ngIf="field.datatype === 'time' && !_chipInput" matIconSuffix [for]="timePicker">
-      <!-- A name for the toggle's button: it had none (T-2). -->
-      <span ngxMatTimepickerToggleIcon><mat-icon aria-hidden="true">schedule</mat-icon><span class="sr-only">{{ 'FIELD.OPEN_CLOCK' | translate }}</span></span>
-    </ngx-mat-timepicker-toggle>
-    <ngx-mat-timepicker #timePicker [format]="24" (timeChanged)="onTimeStringChange($event)" (closed)="typedTime?.nativeElement?.focus()"></ngx-mat-timepicker>
+    <!-- Time field: typed (HH:MM) or picked from the clock's list (U-14).
+         The clock is Material's own timepicker (audit 14.11., U-06, U-19): a list
+         of times in the widget's language, where a library's dialog said
+         "CANCEL" and "OK". Its directive sits on an anchor of its own - on the
+         typed input it would parse the text first and replace it. The anchor
+         is out of sight, but a combobox with a name: the clock puts the focus
+         there while its list is open. -->
+    @if (field.datatype === 'time' && !_chipInput) {
+      <input
+        matInput
+        [required]="field.isRequired"
+        [errorStateMatcher]="errorMatcher"
+        [aria-describedby]="describedBy"
+        [(ngModel)]="inputValue"
+        (change)="onTimeTyped($any($event.target).value)"
+        placeholder="HH:MM"
+        [disabled]="field.status === FieldStatus.EXTRACTING"/>
+      <input class="clock-anchor" [matTimepicker]="timeClock" [matTimepickerOpenOnClick]="false" [value]="clockValue" [disabled]="field.status === FieldStatus.EXTRACTING" tabindex="-1" [attr.aria-label]="'FIELD.CHOOSE_TIME' | translate"/>
+      <mat-timepicker #timeClock appFieldPart interval="15m" (selected)="onTimePicked($event.value)" (closed)="focusInput()"></mat-timepicker>
+    }
+
+    @if (calendar && (field.datatype === 'date' || field.datatype === 'datetime') && !_chipInput) {
+      <mat-datepicker-toggle matIconSuffix [for]="calendar"></mat-datepicker-toggle>
+    }
+    @if (clock && (field.datatype === 'time' || field.datatype === 'datetime') && !_chipInput) {
+      <mat-timepicker-toggle matIconSuffix [for]="clock" [aria-label]="'FIELD.OPEN_CLOCK' | translate"></mat-timepicker-toggle>
+    }
 
     <!-- Number field -->
     <input
@@ -116,8 +157,7 @@
       [(ngModel)]="inputValue"
       (input)="onInput($event)"
       (blur)="onBlur()"
-      [placeholder]="field.description || ''"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+      [disabled]="field.status === FieldStatus.EXTRACTING"/>
 
     <!-- URL/URI field -->
     <input
@@ -130,8 +170,8 @@
       [(ngModel)]="inputValue"
       (input)="onInput($event)"
       (blur)="onBlur()"
-      [placeholder]="field.description || 'https://...'"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+      placeholder="https://..."
+      [disabled]="field.status === FieldStatus.EXTRACTING"/>
 
     <!-- Duration field (ISO 8601: P1D, PT3H, etc.) -->
     <input
@@ -144,8 +184,8 @@
       [(ngModel)]="inputValue"
       (input)="onInput($event)"
       (blur)="onBlur()"
-      [placeholder]="field.description || placeholderDuration"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly"/>
+      [placeholder]="placeholderDuration"
+      [disabled]="field.status === FieldStatus.EXTRACTING"/>
 
     <!-- JSON field -->
     <textarea
@@ -161,9 +201,9 @@
       [(ngModel)]="inputValue"
       (input)="onInput($event)"
       (blur)="onBlur()"
-      [placeholder]="field.description || '{&quot;key&quot;: &quot;value&quot;}'"
+      placeholder='{"key": "value"}'
       class="json-input"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly">
+      [disabled]="field.status === FieldStatus.EXTRACTING">
     </textarea>
 
     <!-- Object field (structured data) -->
@@ -180,23 +220,24 @@
       [(ngModel)]="inputValue"
       (input)="onInput($event)"
       (blur)="onBlur()"
-      [placeholder]="field.description || ''"
       class="object-input"
-      [disabled]="field.status === FieldStatus.EXTRACTING || readonly">
+      [disabled]="field.status === FieldStatus.EXTRACTING">
     </textarea>
 
     <!-- === Tree Picker fields (vocab with >=5 concepts or hierarchical) === -->
+    <!-- The focusable control is the combobox input inside; the wrapper only catches its keys and the click beside it. -->
+    <!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -->
     <div class="inline-chips-input picker-trigger"
          *ngIf="!_isSpecialDatatype && _useTreePicker"
-         (mousedown)="!readonly && !pickerOpen && openPicker(); $event.preventDefault()"
+         (mousedown)="!pickerOpen && openPicker(); $event.preventDefault()"
          (keydown)="onPickerKeydown($event)">
       <mat-chip-set
-        *ngIf="(field.multiple || field.datatype === 'array') && field.value?.length"
+        *ngIf="(field.multiple || field.datatype === 'array') && _chips.length"
         class="chip-container"
         [attr.aria-label]="'FIELD.SELECTED_VALUES' | translate">
-        <mat-chip *ngFor="let chip of field.value" highlighted (removed)="!readonly && removeChip(chip)">
-          {{ getChipDisplayValue(chip) }}
-          <button *ngIf="!readonly" matChipRemove type="button" [attr.aria-label]="'FIELD.REMOVE_VALUE' | translate: { value: getChipDisplayValue(chip) }" (mousedown)="$event.stopPropagation()">
+        <mat-chip *ngFor="let chip of _chips" highlighted (removed)="removeChip(chip.value)">
+          {{ chip.label }}
+          <button matChipRemove type="button" [attr.aria-label]="'FIELD.REMOVE_VALUE' | translate: { value: chip.label }" (mousedown)="$event.stopPropagation()">
             <mat-icon><app-svg-icon name="cancel"></app-svg-icon></mat-icon>
           </button>
         </mat-chip>
@@ -207,8 +248,7 @@
         [required]="field.isRequired"
         [errorStateMatcher]="errorMatcher"
         [aria-describedby]="describedBy"
-        [value]="field.value ? getChipDisplayValue(field.value) : ''"
-        [placeholder]="field.description || ''"
+        [value]="inputValue"
         readonly
         class="picker-display-input"
         role="combobox"
@@ -223,14 +263,14 @@
         [errorStateMatcher]="errorMatcher"
         [aria-describedby]="describedBy"
         value=""
-        [placeholder]="field.value?.length ? '' : (field.description || placeholderVocabPicker)"
+        [placeholder]="_chips.length ? '' : placeholderVocabPicker"
         readonly
         class="picker-display-input"
         role="combobox"
         aria-haspopup="dialog"
         [attr.aria-expanded]="pickerOpen"
         [attr.aria-controls]="pickerOpen ? pickerId : null"
-        [class.collapsed]="field.value?.length"
+        [class.collapsed]="_chips.length"
         *ngIf="(field.multiple || field.datatype === 'array')">
     </div>
 
@@ -240,19 +280,28 @@
       matIconSuffix
       class="dropdown-arrow"
       aria-hidden="true"
-      (mousedown)="!readonly && !pickerOpen && openPicker(); $event.preventDefault()">
+      (mousedown)="!pickerOpen && openPicker(); $event.preventDefault()">
       arrow_drop_down
     </mat-icon>
 
     <!-- === Regular text/array fields: inline chips + textarea with autocomplete === -->
     <div class="inline-chips-input" *ngIf="!_isSpecialDatatype && !_useTreePicker">
+      <!-- Suggestions exist for a field with a vocabulary only (U-18). Before the
+           textarea, which reads the panel the block has just created. -->
+      @if (_hasVocabulary) {
+        <mat-autocomplete appFieldPart (optionSelected)="selectOption($event.option.value)">
+          <mat-option *ngFor="let option of filteredOptions" [value]="option">
+            {{ option }}
+          </mat-option>
+        </mat-autocomplete>
+      }
       <mat-chip-set
-        *ngIf="(field.multiple || field.datatype === 'array') && field.value?.length"
+        *ngIf="(field.multiple || field.datatype === 'array') && _chips.length"
         class="chip-container"
         [attr.aria-label]="'FIELD.SELECTED_VALUES' | translate">
-        <mat-chip *ngFor="let chip of field.value" highlighted (removed)="!readonly && removeChip(chip)">
-          {{ getChipDisplayValue(chip) }}
-          <button *ngIf="!readonly" matChipRemove type="button" [attr.aria-label]="'FIELD.REMOVE_VALUE' | translate: { value: getChipDisplayValue(chip) }">
+        <mat-chip *ngFor="let chip of _chips" highlighted (removed)="removeChip(chip.value)">
+          {{ chip.label }}
+          <button matChipRemove type="button" [attr.aria-label]="'FIELD.REMOVE_VALUE' | translate: { value: chip.label }">
             <mat-icon><app-svg-icon name="cancel"></app-svg-icon></mat-icon>
           </button>
         </mat-chip>
@@ -265,14 +314,15 @@
         rows="1"
         cdkTextareaAutosize
         cdkAutosizeMinRows="1"
-        [cdkAutosizeMaxRows]="readonly ? 50 : 5"
+        cdkAutosizeMaxRows="5"
         [(ngModel)]="inputValue"
         (input)="onInput($event)"
         (blur)="onBlur()"
         (keypress)="onKeyPress($event)"
-        [disabled]="field.status === FieldStatus.EXTRACTING || readonly"
-        [matAutocomplete]="auto"
-        [placeholder]="field.description || ((field.multiple || field.datatype === 'array') ? placeholderArrayInput : '')"
+        [disabled]="field.status === FieldStatus.EXTRACTING"
+        [matAutocomplete]="autocomplete!"
+        [matAutocompleteDisabled]="!autocomplete"
+        [placeholder]="(field.multiple || field.datatype === 'array') ? placeholderArrayInput : ''"
         #autoTrigger="matAutocompleteTrigger">
       </textarea>
     </div>
@@ -285,13 +335,6 @@
       (click)="autocompleteTrigger?.openPanel()">
       arrow_drop_down
     </mat-icon>
-
-    <!-- Autocomplete panel (for non-tree-picker fields) -->
-    <mat-autocomplete #auto="matAutocomplete" (optionSelected)="selectOption($event.option.value)">
-      <mat-option *ngFor="let option of filteredOptions" [value]="option">
-        {{ option }}
-      </mat-option>
-    </mat-autocomplete>
 
   </mat-form-field>
 
@@ -310,11 +353,19 @@
     </app-vocab-tree-picker>
   </div>
 
+  <!-- What the field is for: a hint that stays, and part of the control's
+       description. It was the placeholder - at 2.0:1, gone with the first
+       character, and nothing a screen reader said (audit 14.11., U-01). -->
+  <div class="support-text description" [id]="descriptionId" *ngIf="field.description">{{ field.description }}</div>
+
   <!-- Support text below field (outside mat-form-field for reliable rendering).
        Errors and warnings live here too: <mat-error> only shows when the
        control is in Material's error state, which these ngModel fields never
        enter, and the layouts hide the subscript area altogether. -->
-  <div class="support-text error" role="alert" [id]="supportId" *ngIf="validationError">
+  <!-- Polite, not role="alert": several fields with an error at once made a
+       screen reader interrupt itself with each of them (audit 14.11., U-22).
+       The error belongs to its control through aria-invalid and aria-describedby. -->
+  <div class="support-text error" aria-live="polite" [id]="supportId" *ngIf="validationError">
     {{ validationError }}
   </div>
   <div class="support-text warning" aria-live="polite" [id]="supportId" *ngIf="validationWarning && !validationError">
@@ -326,4 +377,28 @@
   <div class="support-text vocab" [id]="supportId" *ngIf="field.vocabulary?.type === 'closed' && !field.isRequired && field.status === FieldStatus.EMPTY && !validationError && !validationWarning">
     {{ 'FIELD.VOCABULARY_CONTROLLED' | translate }}
   </div>
+
+  <!-- The entry of an object list ends here: remove it, or - after the last -
+       add another (audit 14.11., W-42). Not in a read-only view. -->
+  @if (entry; as e) {
+    <div class="entry-actions">
+      @if (e.removable) {
+        <button type="button" mat-button class="btn-remove-entry"
+                (click)="entryChange.emit({ fieldId: e.parentId, remove: e.index })"
+                [attr.aria-label]="'FIELD.REMOVE_ENTRY_FOR' | translate: { field: e.parentLabel, number: e.index + 1 }">
+          <mat-icon>delete</mat-icon>
+          <span>{{ 'FIELD.REMOVE_ENTRY' | translate }}</span>
+        </button>
+      }
+      @if (e.last) {
+        <button type="button" mat-button class="btn-add-entry"
+                (click)="entryChange.emit({ fieldId: e.parentId })"
+                [attr.aria-label]="'FIELD.ADD_ENTRY_FOR' | translate: { field: e.parentLabel }">
+          <mat-icon>add</mat-icon>
+          <span>{{ 'FIELD.ADD_ENTRY' | translate }}</span>
+        </button>
+      }
+    </div>
+  }
+  }
 </div>

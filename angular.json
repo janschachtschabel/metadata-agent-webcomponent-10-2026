@@ -16,23 +16,12 @@
             "index": "src/index.html",
             "main": "src/main.ts",
             "polyfills": [
-              "src/zone-flags.ts",
               "zone.js"
             ],
-            "tsConfig": "tsconfig.json",
+            "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/assets",
-              {
-                "glob": "**/*",
-                "input": "src/schemata",
-                "output": "schemata"
-              },
-              {
-                "glob": "**/*",
-                "input": "src/examples",
-                "output": "examples"
-              },
               {
                 "glob": "material-icons.woff2",
                 "input": "node_modules/material-icons/iconfont",
@@ -54,8 +43,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "1.6mb",
-                  "maximumError": "2mb"
+                  "maximumWarning": "1.4mb",
+                  "maximumError": "1.6mb"
                 }
               ],
               "fileReplacements": [
@@ -79,8 +68,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "1.6mb",
-                  "maximumError": "2mb"
+                  "maximumWarning": "1.4mb",
+                  "maximumError": "1.6mb"
                 }
               ],
               "fileReplacements": [
@@ -103,7 +92,7 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
             "allowedHosts": [
-              "all"
+              "localhost"
             ]
           },
           "configurations": {
@@ -122,7 +111,6 @@
             "karmaConfig": "karma.conf.js",
             "tsConfig": "tsconfig.spec.json",
             "polyfills": [
-              "src/zone-flags.ts",
               "zone.js",
               "zone.js/testing"
             ],
@@ -137,9 +125,28 @@
                 "output": "fonts"
               },
               {
+                "glob": "_codepoints.scss",
+                "input": "node_modules/material-icons/css",
+                "output": "fonts"
+              },
+              {
                 "glob": "roboto-latin{,-ext}-{300,400,500}-normal.woff2",
                 "input": "node_modules/@fontsource/roboto/files",
                 "output": "fonts"
+              },
+              {
+                "glob": "**/*.{ts,html}",
+                "input": "src/app",
+                "output": "repo/src/app",
+                "ignore": [
+                  "**/*.spec.ts",
+                  "testing/**"
+                ]
+              },
+              {
+                "glob": "README*.md",
+                "input": ".",
+                "output": "repo"
               }
             ],
             "browsers": "ChromeHeadless"

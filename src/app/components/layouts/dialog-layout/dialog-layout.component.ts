@@ -1,17 +1,16 @@
 import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TranslateModule } from '@ngx-translate/core';
-import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatMenuModule } from '@angular/material/menu';
-import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { ContentType, FieldGroup } from '../../../shared/models/canvas.models';
+import { ContentType } from '../../../shared/models/canvas.models';
 import { LayoutBase } from '../layout-base';
 import { FieldComponent } from '../../field/field.component';
 import { InputAreaComponent } from '../../shared/input-area/input-area.component';
 import { StatusBarComponent } from '../../shared/status-bar/status-bar.component';
-import { LanguageSwitcherComponent } from '../../language-switcher/language-switcher.component';
+import { ExtractionFeedbackComponent } from '../../shared/extraction-feedback/extraction-feedback.component';
+import { FloatingBarComponent } from '../../shared/floating-bar/floating-bar.component';
+import { GroupHeaderComponent } from '../../shared/group-header/group-header.component';
 import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/preview-thumbnail.component';
 import { SvgIconComponent } from '../../shared/svg-icon/svg-icon.component';
 
@@ -31,14 +30,13 @@ import { SvgIconComponent } from '../../shared/svg-icon/svg-icon.component';
   imports: [
     CommonModule,
     TranslateModule,
-    MatButtonModule,
     MatIconModule,
-    MatMenuModule,
-    MatTooltipModule,
     FieldComponent,
     InputAreaComponent,
     StatusBarComponent,
-    LanguageSwitcherComponent,
+    ExtractionFeedbackComponent,
+    FloatingBarComponent,
+    GroupHeaderComponent,
     PreviewThumbnailComponent,
     SvgIconComponent,
   ],
@@ -58,7 +56,6 @@ export class DialogLayoutComponent extends LayoutBase {
 
   @Input() showInputArea = false;
   @Input() showStatusBar = false;
-  @Input() showFieldActions = true;
   @Input() showFloatingControls = true;
   @Input() showContentTypeOnly = false;
   @Input() showUploadButton = false;
@@ -85,24 +82,4 @@ export class DialogLayoutComponent extends LayoutBase {
   @Output() upload = new EventEmitter<void>();
   @Output() reset = new EventEmitter<void>();
   @Output() screenshotToggle = new EventEmitter<boolean>();
-
-  getGroupIcon(group: FieldGroup): string {
-    const iconMap: Record<string, string> = {
-      'beschreibung': 'description',
-      'description': 'description',
-      'paedagogisches': 'school',
-      'pedagogical': 'school',
-      'zielgruppe': 'groups',
-      'target_audience': 'groups',
-      'technisches': 'settings',
-      'technical': 'settings',
-      'rechtliches': 'gavel',
-      'legal': 'gavel',
-      'klassifikation': 'category',
-      'classification': 'category',
-      'core': 'star',
-      'special': 'extension'
-    };
-    return iconMap[group.id.toLowerCase()] || 'folder';
-  }
 }

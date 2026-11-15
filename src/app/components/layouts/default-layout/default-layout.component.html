@@ -10,6 +10,7 @@
     <div class="mode-switcher">
       <mat-button-toggle-group 
         [value]="inputMode"
+        [attr.aria-label]="'INPUT.MODE_LABEL' | translate"
         (change)="inputModeChange.emit($event.value)"
         appearance="standard"
         hideSingleSelectionIndicator>
@@ -28,6 +29,8 @@
       </mat-button-toggle-group>
     </div>
 
+    <!-- While a run is out the inputs are read-only and the buttons aria-disabled:
+         natively disabled, the one with the focus dropped it to <body> (U-14). -->
     <!-- Text Input (default) -->
     <ng-container *ngIf="inputMode === 'text'">
       <mat-form-field appearance="outline" class="full-width">
@@ -37,7 +40,7 @@
           rows="4"
           [ngModel]="userText"
           (ngModelChange)="userTextChange.emit($event)"
-          [disabled]="state?.isExtracting ?? false"
+          [readonly]="state?.isExtracting ?? false"
           (keydown)="onTextKeydown($event)">
         </textarea>
       </mat-form-field>
@@ -52,7 +55,7 @@
           type="url"
           [ngModel]="sourceUrl"
           (ngModelChange)="sourceUrlChange.emit($event)"
-          [disabled]="state?.isExtracting ?? false"
+          [readonly]="state?.isExtracting ?? false"
           placeholder="https://example.com/resource">
         <mat-icon matPrefix>link</mat-icon>
       </mat-form-field>
@@ -67,7 +70,7 @@
           type="text"
           [ngModel]="nodeId"
           (ngModelChange)="nodeIdChange.emit($event)"
-          [disabled]="state?.isExtracting ?? false"
+          [readonly]="state?.isExtracting ?? false"
           placeholder="abc123-def456-...">
         <mat-icon matPrefix>tag</mat-icon>
       </mat-form-field>
@@ -75,7 +78,7 @@
     
     <div class="header-actions">
       <!-- Text Extraction Button -->
-      <button 
+      <button type="button"
         *ngIf="inputMode === 'text'"
         mat-flat-button
         class="btn-extract"
@@ -89,7 +92,7 @@
       </button>
       
       <!-- URL Extraction Button -->
-      <button 
+      <button type="button"
         *ngIf="inputMode === 'url'"
         mat-flat-button
         class="btn-extract"
@@ -103,7 +106,7 @@
       </button>
       
       <!-- NodeId Extraction Button -->
-      <button 
+      <button type="button"
         *ngIf="inputMode === 'nodeId'"
         mat-flat-button
         class="btn-extract"
@@ -116,11 +119,12 @@
         <span *ngIf="state?.isExtracting">{{ 'INPUT.EXTRACTING' | translate }}</span>
       </button>
       
-      <button 
+      <button type="button"
         mat-flat-button
         class="btn-reset"
-        (click)="reset.emit()"
-        [disabled]="state?.isExtracting ?? false">
+        (click)="state?.isExtracting || reset.emit()"
+        [disabled]="state?.isExtracting ?? false"
+        [disabledInteractive]="state?.isExtracting ?? false">
         <mat-icon>refresh</mat-icon>
         {{ 'INPUT.RESET' | translate }}
       </button>
@@ -139,54 +143,15 @@
     </div>
   </section>
 
-  <!-- ===== EXTRACTION ERROR ===== -->
-  <div class="extraction-error" *ngIf="state?.extractionError" role="alert">
-    <mat-icon>error_outline</mat-icon>
-    <span>{{ state!.extractionError }}</span>
-    <button mat-icon-button (click)="onDismissError()" [attr.aria-label]="'COMMON.CLOSE' | translate">
-      <mat-icon>close</mat-icon>
-    </button>
-  </div>
-
-  <!-- ===== EXTRACTION WARNING ===== -->
-  <div class="extraction-warning" *ngIf="state?.extractionWarning">
-    <mat-icon>warning</mat-icon>
-    <span>{{ state!.extractionWarning }}</span>
-    <button mat-icon-button (click)="onDismissWarning()" [attr.aria-label]="'COMMON.CLOSE' | translate">
-      <mat-icon>close</mat-icon>
-    </button>
-  </div>
-
   <!-- ===== STATUS BAR ===== -->
   <section class="status-bar" *ngIf="showStatusBar && state?.totalFields">
-    <!-- Content Type Selector -->
-    <div class="content-type-selector">
-      <div class="split-button">
-        <div class="split-button-label">
-          <mat-icon>{{ state?.contentTypeIcon || 'category' }}</mat-icon>
-          <span>{{ state?.contentTypeLabel || ('CONTENT_TYPE.NOT_DETECTED' | translate) }}</span>
-        </div>
-        <button 
-          mat-icon-button
-          [matMenuTriggerFor]="contentTypeMenu"
-          [disabled]="state?.isExtracting ?? false"
-          class="split-button-trigger"
-          [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
-          <mat-icon>expand_more</mat-icon>
-        </button>
-      </div>
-      
-      <mat-menu #contentTypeMenu="matMenu">
-        <button 
-          mat-menu-item 
-          *ngFor="let ct of contentTypes"
-          (click)="selectContentType.emit(ct)"
-          [class.active]="state?.contentTypeLabel === ct.label">
-          <span>{{ ct.label }}</span>
-          <mat-icon *ngIf="state?.contentTypeLabel === ct.label">check</mat-icon>
-        </button>
-      </mat-menu>
-    </div>
+    <app-content-type-menu
+      class="content-type-selector"
+      [state]="state"
+      [contentTypes]="contentTypes"
+      [readonly]="readonly"
+      (selectContentType)="selectContentType.emit($event)">
+    </app-content-type-menu>
 
     <!-- Field Stats -->
     <div class="field-stats">
@@ -212,6 +177,14 @@
     </div>
   </section>
 
+  <!-- ===== RUNNING EXTRACTION, ERROR, NOTICE (shared by all layouts) ===== -->
+  <app-extraction-feedback
+    [state]="state"
+    (cancel)="cancelExtraction.emit()"
+    (dismissError)="dismissError.emit()"
+    (dismissWarning)="dismissWarning.emit()">
+  </app-extraction-feedback>
+
   <!-- ===== PREVIEW THUMBNAIL ===== -->
   <app-preview-thumbnail
     *ngIf="showPreview && state?.previewImageUrl"
@@ -219,43 +192,32 @@
   </app-preview-thumbnail>
 
   <!-- ===== FIELD GROUPS ===== -->
-  <section class="fields-section" *ngIf="_displayGroups.length">
+  <section class="fields-section" *ngIf="_displayGroups.length" [attr.aria-busy]="state?.isExtracting ? 'true' : null">
     <ng-container *ngFor="let group of _displayGroups; trackBy: trackByGroupId; let i = index">
-      <div class="field-group"  
+      <div class="field-group"
            *ngIf="(flatGroups || (group.isCore && showCoreFields) || (!group.isCore && showSpecialFields)) && (!readonly || (_visibleFieldsMap.get(group.id)?.length ?? 0) > 0)">
-        
-        <!-- Group Header -->
-        <div class="group-header" (click)="group.collapsed = !group.collapsed">
-          <div class="group-title">
-            <mat-icon>{{ group.icon || 'folder' }}</mat-icon>
-            <h3>
-              <button type="button" class="group-toggle"
-                      [attr.aria-expanded]="!group.collapsed"
-                      [attr.aria-controls]="group.collapsed ? null : _uid + '-g' + i"
-                      (click)="$event.stopPropagation(); group.collapsed = !group.collapsed">{{ group.label }}</button>
-            </h3>
-          </div>
+
+        <app-group-header [group]="group" [collapsible]="groupCollapse" [controls]="_uid + '-g' + i">
           <div class="group-info" *ngIf="showFieldActions">
             <span class="schema-badge">{{ !group.schemaName || group.schemaName === 'Core' ? ('LAYOUT.CORE_FIELDS' | translate) : (state?.contentTypeLabel || group.schemaName) }}</span>
             <span class="count">{{ _filledCountMap.get(group.id) ?? 0 }}/{{ _flatCountMap.get(group.id) ?? 0 }}</span>
             <span class="count-label">{{ 'PROGRESS.FIELDS_RECOGNIZED' | translate }}</span>
           </div>
-          <mat-icon class="expand-icon">{{ group.collapsed ? 'expand_more' : 'expand_less' }}</mat-icon>
-        </div>
-        
-        <!-- Group Fields (multi-column grid) -->
+        </app-group-header>
+
         <div class="group-fields"
              [id]="_uid + '-g' + i"
              [class.columns-2]="columns === 2"
              [class.columns-3]="columns === 3"
              [class.columns-4]="columns === 4"
-             *ngIf="!group.collapsed">
+             *ngIf="!(groupCollapse && group.collapsed)">
           <app-field
             *ngFor="let field of _visibleFieldsMap.get(group.id); trackBy: trackByFieldId"
             [field]="field"
             [readonly]="readonly"
-            [showActions]="showFieldActions"
             [highlightAi]="highlightAi"
+            [entry]="_entryControls.get(field.fieldId) ?? null"
+            (entryChange)="objectEntryChange.emit($event)"
             (valueChange)="onFieldChange(field.fieldId, $event)">
           </app-field>
         </div>
@@ -272,69 +234,27 @@
     </div>
   </section>
 
-  <!-- ===== FLOATING CONTROLS ===== -->
-  <div class="floating-controls" *ngIf="showFloatingControls">
-    <!-- Content Type (when fields exist) -->
-    <div class="floating-content-type" *ngIf="showContentType && state?.totalFields">
-      <div class="split-button">
-        <div class="split-button-label">
-          <mat-icon>{{ state?.contentTypeIcon || 'category' }}</mat-icon>
-          <span>{{ state?.contentTypeLabel || ('CONTENT_TYPE.NOT_DETECTED' | translate) }}</span>
-        </div>
-        <button 
-          mat-icon-button
-          [matMenuTriggerFor]="floatingCtMenu"
-          [disabled]="state?.isExtracting ?? false" [attr.aria-label]="'CONTENT_TYPE.SELECT' | translate">
-          <mat-icon>expand_more</mat-icon>
-        </button>
-      </div>
-      
-      <mat-menu #floatingCtMenu="matMenu">
-        <button 
-          mat-menu-item 
-          *ngFor="let ct of contentTypes"
-          (click)="selectContentType.emit(ct)">
-          <mat-icon *ngIf="ct.icon">{{ ct.icon }}</mat-icon>
-          <span>{{ ct.label }}</span>
-        </button>
-      </mat-menu>
-    </div>
-    
-    <!-- Action Buttons (hidden when showContentTypeOnly is true) -->
-    <div class="action-buttons" *ngIf="!showContentTypeOnly">
-      <app-json-loader *ngIf="showJsonLoader" (jsonLoaded)="jsonLoaded.emit($event)" (loadError)="jsonLoadError.emit()"></app-json-loader>
-      
-      <button 
-        mat-icon-button
-        *ngIf="showSaveButton"
-        [disabled]="!state?.filledFields"
-        (click)="downloadJson.emit()"
-        [matTooltip]="'CONTROLS.SAVE_JSON' | translate" [attr.aria-label]="'CONTROLS.SAVE_JSON' | translate">
-        <mat-icon>save</mat-icon>
-      </button>
-      
-      <button 
-        mat-icon-button
-        *ngIf="showUploadButton"
-        class="upload-btn"
-        [disabled]="!state?.filledFields || uploading || (state?.isExtracting ?? false)"
-        [disabledInteractive]="uploading || (state?.isExtracting ?? false)"
-        (click)="state?.isExtracting || upload.emit()"
-        [matTooltip]="'CONTROLS.UPLOAD' | translate" [attr.aria-label]="'CONTROLS.UPLOAD' | translate">
-        <mat-icon>cloud_upload</mat-icon>
-      </button>
-      
-      <button 
-        mat-icon-button
-        *ngIf="showResetButton"
-        (click)="reset.emit()"
-        [matTooltip]="'CONTROLS.RESET' | translate" [attr.aria-label]="'CONTROLS.RESET' | translate">
-        <mat-icon>refresh</mat-icon>
-      </button>
-    </div>
-    
-    <!-- Language Switcher (separate floating pill) -->
-    <app-language-switcher *ngIf="showLanguageSwitcher && !showContentTypeOnly"></app-language-switcher>
-  </div>
+  <!-- ===== FLOATING BAR (shared by all layouts) ===== -->
+  <app-floating-bar
+    *ngIf="showFloatingControls"
+    [state]="state"
+    [contentTypes]="contentTypes"
+    [readonly]="readonly"
+    [showContentType]="showContentType"
+    [showContentTypeOnly]="showContentTypeOnly"
+    [showLanguageSwitcher]="showLanguageSwitcher"
+    [showJsonLoader]="showJsonLoader"
+    [showSaveButton]="showSaveButton"
+    [showUploadButton]="showUploadButton"
+    [showResetButton]="showResetButton"
+    [uploading]="uploading"
+    saveLabel="CONTROLS.SAVE_JSON"
+    (selectContentType)="selectContentType.emit($event)"
+    (jsonLoaded)="jsonLoaded.emit($event)"
+    (jsonLoadError)="jsonLoadError.emit()"
+    (save)="downloadJson.emit()"
+    (upload)="upload.emit()"
+    (reset)="reset.emit()">
+  </app-floating-bar>
 
 </div>

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { NoAnimationsModule } from '../../testing/no-animations';
 
 import { LanguageSwitcherComponent } from './language-switcher.component';
 import { I18nService } from '../../core/i18n.service';
@@ -16,7 +16,7 @@ describe('LanguageSwitcherComponent', () => {
 
   async function render(lang: 'de' | 'en') {
     await TestBed.configureTestingModule({
-      imports: [LanguageSwitcherComponent, TranslateModule.forRoot(), NoopAnimationsModule],
+      imports: [LanguageSwitcherComponent, TranslateModule.forRoot(), NoAnimationsModule],
     }).compileComponents();
     TestBed.inject(TranslateService).setTranslation(lang, {
       LANGUAGE: { SWITCH_TO_ENGLISH: 'Switch to English', SWITCH_TO_GERMAN: 'Zu Deutsch wechseln' },

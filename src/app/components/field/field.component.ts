@@ -1,5 +1,6 @@
 import { 
   Component, 
+  Directive,
   Input, 
   Output, 
   EventEmitter, 
@@ -11,7 +12,9 @@ import {
   OnChanges,
   OnDestroy,
   SimpleChanges,
-  ViewChild
+  ViewChild,
+  forwardRef,
+  inject
 } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
@@ -19,25 +22,25 @@ import { FormsModule } from '@angular/forms';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatAutocompleteModule, MatAutocompleteTrigger } from '@angular/material/autocomplete';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MAT_DATE_LOCALE, MAT_DATE_FORMATS, MatNativeDateModule, DateAdapter, NativeDateAdapter, ErrorStateMatcher } from '@angular/material/core';
+import { MatAutocomplete, MatAutocompleteModule, MatAutocompleteTrigger } from '@angular/material/autocomplete';
+import { MatDatepicker, MatDatepickerIntl, MatDatepickerModule } from '@angular/material/datepicker';
+import { MatTimepicker, MatTimepickerModule } from '@angular/material/timepicker';
+import { MAT_DATE_LOCALE, MAT_DATE_FORMATS, DateAdapter, NativeDateAdapter, ErrorStateMatcher } from '@angular/material/core';
 import { MatRadioModule } from '@angular/material/radio';
-import { NgxMatTimepickerModule } from 'ngx-mat-timepicker';
 import { TextFieldModule } from '@angular/cdk/text-field';
 
 import { CanvasFieldState, FieldStatus } from '../../shared/models/canvas.models';
 import { FieldValidationService, VocabularyDef } from '../../core/field-validation.service';
 import { sameValue } from '../../core/canvas-fields';
+import { holdInput } from '../../core/pending-inputs';
 import { VocabTreePickerComponent } from '../shared/vocab-tree-picker/vocab-tree-picker.component';
 import { SvgIconComponent } from '../shared/svg-icon/svg-icon.component';
 import { uniqueId } from '../../shared/unique-id';
-import { parseDate, parseDateTime } from '../../core/date-parsing';
+import { isIsoDate, keepSecondsAndOffset, parseDate, parseDateTime } from '../../core/date-parsing';
+import { WidgetDatepickerIntl } from '../../core/widget-datepicker-intl';
 
 const DATE_FORMATS = {
   parse: { dateInput: 'DD.MM.YYYY', timeInput: 'HH:MM' },
@@ -56,6 +59,31 @@ function dateSeparator(locale: unknown): string {
   return String(locale).startsWith('en') ? '/' : '.';
 }
 
+/**
+ * The actions of one entry of an object list (a venue of an event), shown
+ * below the entry's last input (audit 14.11., W-42).
+ */
+export interface ObjectEntryControls {
+  /** The object list field the entry belongs to, and its name for the buttons. */
+  parentId: string;
+  parentLabel: string;
+  /** Position of the entry in the list (the arrayIndex of its subfields). */
+  index: number;
+  /** The last entry: "add" follows it. */
+  last: boolean;
+  /** Not for the one entry form of a list nobody filled: there is nothing to remove. */
+  removable: boolean;
+}
+
+/** What a button of an entry asks for: a new entry, or the removal of the one at `remove`. */
+export interface ObjectEntryChange {
+  fieldId: string;
+  remove?: number;
+}
+
+/** Datatypes whose values a read-only view shows as links (U-02). */
+const LINK_DATATYPES = ['url', 'uri'];
+
 /** Special datatypes whose lists are entered item by item as chips (W-L4). */
 const MULTI_VALUE_SCALARS = ['date', 'datetime', 'time', 'number', 'integer', 'url', 'uri', 'duration'];
 
@@ -65,7 +93,7 @@ const MULTI_VALUE_SCALARS = ['date', 'datetime', 'time', 'number', 'integer', 'u
  */
 @Injectable()
 class WidgetDateAdapter extends NativeDateAdapter {
-  override format(date: Date, displayFormat: Object): string {
+  override format(date: Date, displayFormat: object): string {
     if (displayFormat === DATE_FORMATS.display.dateInput) {
       const day = String(date.getDate()).padStart(2, '0');
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -95,6 +123,26 @@ class WidgetDateAdapter extends NativeDateAdapter {
   }
 }
 
+/**
+ * Hands a calendar, clock or autocomplete to its field when it is created.
+ *
+ * They are created only for the fields that need them (audit 14.11., U-18) -
+ * every field used to carry two calendars, two clocks and an autocomplete.
+ * That puts each one into an @if block, where a template reference does not
+ * reach the toggle button: it sits in the form field's suffix slot, a block
+ * of its own. The field hands the instance on; it is set while the block is
+ * created, before the toggle's bindings are read.
+ */
+@Directive({ selector: 'mat-datepicker[appFieldPart], mat-timepicker[appFieldPart], mat-autocomplete[appFieldPart]', standalone: true })
+export class FieldPartDirective {
+  constructor() {
+    const field = inject<FieldComponent>(forwardRef(() => FieldComponent));
+    field.calendar = inject(MatDatepicker, { self: true, optional: true }) ?? field.calendar;
+    field.clock = inject(MatTimepicker, { self: true, optional: true }) ?? field.clock;
+    field.autocomplete = inject(MatAutocomplete, { self: true, optional: true }) ?? field.autocomplete;
+  }
+}
+
 @Component({
   selector: 'app-field',
   standalone: true,
@@ -104,24 +152,24 @@ class WidgetDateAdapter extends NativeDateAdapter {
     TranslateModule,
     MatFormFieldModule,
     MatInputModule,
-    MatSelectModule,
     MatChipsModule,
     MatIconModule,
     MatButtonModule,
-    MatTooltipModule,
     MatAutocompleteModule,
     MatDatepickerModule,
-    MatNativeDateModule,
+    MatTimepickerModule,
     MatRadioModule,
-    NgxMatTimepickerModule,
     TextFieldModule,
     VocabTreePickerComponent,
-    SvgIconComponent
+    SvgIconComponent,
+    FieldPartDirective
   ],
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: 'de-DE' },
     { provide: DateAdapter, useClass: WidgetDateAdapter },
-    { provide: MAT_DATE_FORMATS, useValue: DATE_FORMATS }
+    { provide: MAT_DATE_FORMATS, useValue: DATE_FORMATS },
+    // The calendar's texts in the widget language; one instance for all fields (U-06).
+    { provide: MatDatepickerIntl, useExisting: WidgetDatepickerIntl }
   ],
   templateUrl: './field.component.html',
   styleUrls: ['./field.component.scss'],
@@ -130,20 +178,28 @@ class WidgetDateAdapter extends NativeDateAdapter {
 export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   @Input() field!: CanvasFieldState;
   @Input() readonly = false;
-  @Input() showActions = true;
   @Input() highlightAi = true;
+  /** Set on the last input of an entry of an object list (W-42). */
+  @Input() entry: ObjectEntryControls | null = null;
   
   @Output() valueChange = new EventEmitter<unknown>();
+  @Output() entryChange = new EventEmitter<ObjectEntryChange>();
   @ViewChild('autoTrigger') autocompleteTrigger?: MatAutocompleteTrigger;
-  /** The typed time input; the clock dial returns the focus there, not to its hidden anchor. */
-  @ViewChild('typedTime') typedTime?: ElementRef<HTMLInputElement>;
+  /** Calendar, clock and autocomplete of this field, where its datatype has one (FieldPartDirective). */
+  calendar?: MatDatepicker<Date>;
+  clock?: MatTimepicker<Date>;
+  autocomplete?: MatAutocomplete;
   
   FieldStatus = FieldStatus;
   
   // Local input value for editing (always empty for array fields)
   inputValue = '';
+  /** The text the input shows for the field's value; '' when it shows none. */
+  private shownValue = '';
   dateValue: Date | null = null;
   dateTimeTimeValue = '00:00';
+  /** The field's time of day for the clock, which opens on it; null without one. */
+  clockValue: Date | null = null;
   filteredOptions: string[] = [];
   
   // Tree picker state
@@ -157,6 +213,8 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
 
   /** Id of the text below the field (error, warning or hint), for aria-describedby. */
   readonly supportId = uniqueId('field-support');
+  /** Id of the field's description below it, for aria-describedby (U-01). */
+  readonly descriptionId = uniqueId('field-description');
 
   /**
    * Material's error state follows this field's own validation (U-12): the
@@ -166,6 +224,8 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   readonly errorMatcher: ErrorStateMatcher = { isErrorState: () => !!this.validationError };
 
   private blurTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Withdraws the delayed blur from the pending inputs (pending-inputs.ts). */
+  private releaseInput: (() => void) | undefined;
 
   // Cached template properties (recomputed only in ngOnChanges, not every CD cycle)
   _isRadioField = false;
@@ -175,9 +235,22 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   _chipInput = false;
   _hasVocabulary = false;
   _statusClass = '';
-  _radioOptions: { label: string; value: string }[] = [];
+  _radioOptions: { label: string; value: string | boolean }[] = [];
+  _radioValue: unknown = null;
   _selectedValues: string[] = [];
-  _chipDisplayCache = new Map<unknown, string>();
+  /**
+   * The values of a list field with the text of their chip. Computed when the
+   * field changes: the template asked for the text of every chip twice on
+   * every change detection, a search through the vocabulary each (W-N).
+   */
+  _chips: { value: unknown; label: string }[] = [];
+  /**
+   * What a read-only view shows: the value as text, one entry per value, a
+   * web address with its link (audit 14.11., U-02).
+   */
+  _readonlyItems: { text: string; href: string | null }[] = [];
+  /** A list field, or several values where one was expected: shown as a list. */
+  _readonlyAsList = false;
   
   // Pre-resolved placeholder texts (avoids translate pipe issues in property bindings
   // under OnPush ancestors, e.g. in browser extension web-component context)
@@ -205,11 +278,13 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     this.i18nSubs.push(
       this.translate.onTranslationChange.subscribe(() => {
         this.resolveTranslatedPlaceholders();
+        this.updateTranslatedOptions();
         this.cdr.markForCheck();
       }),
       this.translate.onLangChange.subscribe(() => {
         this.dateAdapter.setLocale(this.dateLocale);
         this.updateInputValue();
+        this.updateTranslatedOptions();
         this.resolveTranslatedPlaceholders();
         this.cdr.markForCheck();
       })
@@ -219,7 +294,17 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   ngOnDestroy(): void {
     this.i18nSubs.forEach(s => s.unsubscribe());
     // The delayed blur check would emit for a field that is gone.
-    clearTimeout(this.blurTimer);
+    this.dropPendingBlur();
+  }
+
+  /**
+   * "Ja"/"Nein" and what a read-only view shows are put into words when the
+   * field changes - and when the language or its texts do: they stayed in
+   * the language of the moment the field was built (audit 14.11., U-21).
+   */
+  private updateTranslatedOptions(): void {
+    this._radioOptions = this.getRadioOptions();
+    this.updateReadonlyItems();
   }
 
   private get dateLocale(): string {
@@ -235,11 +320,11 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /**
-   * Id for aria-describedby while a support text (error, warning, required or
-   * vocabulary hint) is shown below the field (U-12). The conditions mirror
-   * the four support-text blocks in the template, of which one shows at most.
-   * '' rather than null when nothing is shown: MatInput's aria-describedby
-   * input is typed as string.
+   * Ids for aria-describedby: the description, and the support text (error,
+   * warning, required or vocabulary hint) while one is shown below the field
+   * (U-12). The conditions mirror the four support-text blocks in the
+   * template, of which one shows at most. '' rather than null when there is
+   * nothing: MatInput's aria-describedby input is typed as string.
    */
   get describedBy(): string {
     const f = this.field;
@@ -247,7 +332,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
       || !!this.validationWarning
       || (f.isRequired && f.status === FieldStatus.EMPTY)
       || (f.vocabulary?.type === 'closed' && !f.isRequired && f.status === FieldStatus.EMPTY);
-    return shown ? this.supportId : '';
+    return [f.description ? this.descriptionId : '', shown ? this.supportId : ''].filter(Boolean).join(' ');
   }
 
   /** The AI origin, also as icon and text: colour alone does not reach everyone (U-16). */
@@ -272,13 +357,114 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     this._hasVocabulary = this.hasVocabulary();
     this._statusClass = this.getStatusClass();
     this._radioOptions = this.getRadioOptions();
+    this._radioValue = this.getRadioValue();
     this._selectedValues = this.getSelectedValues();
-    this._chipDisplayCache.clear();
+    this._chips = this.isListField ? this.listValue().map(value => ({ value, label: this.getChipDisplayValue(value) })) : [];
+    this.updateReadonlyItems();
   }
-  
+
+  /** After updateInputValue and the radio options: it shows what they hold. */
+  private updateReadonlyItems(): void {
+    const value = this.field.value;
+    this._readonlyAsList = this.isListField || Array.isArray(value);
+    if (this._readonlyAsList) {
+      this._readonlyItems = this.listValue().map(item => this.readonlyItem(item, this.getChipDisplayValue(item)));
+    } else if (value === null || value === undefined || value === '') {
+      this._readonlyItems = [];
+    } else {
+      this._readonlyItems = [this.readonlyItem(value, this.readonlyText(value))];
+    }
+  }
+
+  /** The text an edit control would show for the value: the option's label, the date as typed, the label of a concept. */
+  private readonlyText(value: unknown): string {
+    if (this._isRadioField) {
+      const option = this._radioOptions.find(o => o.value === this._radioValue);
+      if (option) return option.label;
+    }
+    if (this.field.datatype === 'date' && this.dateValue) {
+      return this.dateAdapter.format(this.dateValue, DATE_FORMATS.display.dateInput);
+    }
+    return this.inputValue || this.getChipDisplayValue(value);
+  }
+
+  /**
+   * A link only for an http(s) address shown as itself in a URL field: not for
+   * a concept shown by its label, an address inside a text, or another scheme.
+   */
+  private readonlyItem(value: unknown, text: string): { text: string; href: string | null } {
+    const address = typeof value === 'string' ? value.trim() : '';
+    const urlField = LINK_DATATYPES.includes(this.field.datatype) || LINK_DATATYPES.includes(this.field.itemDatatype ?? '');
+    const linked = urlField && text.trim() === address && /^https?:\/\/\S+$/i.test(address);
+    return { text, href: linked ? address : null };
+  }
+
+  /** A field that holds a list, shown as chips. */
+  private get isListField(): boolean {
+    return !!this.field.multiple || this.field.datatype === 'array';
+  }
+
+  /**
+   * The value of a list field as a list. A single value stored there (an
+   * older record, an import) is its only entry: it is shown as a chip and
+   * kept when the editor adds another - the chips looped over the text
+   * itself, which Angular refuses (audit 14.11., W-43).
+   */
+  private listValue(): unknown[] {
+    const value = this.field.value;
+    if (Array.isArray(value)) return value;
+    return value === null || value === undefined || value === '' ? [] : [value];
+  }
+
+  /**
+   * Says so when the stored value does not fit the field and its control
+   * cannot show it: the control stayed empty while the value stayed in the
+   * record and counted as filled (audit 14.11., W-43). Nothing is converted -
+   * which of several values is meant, or which date "03.05.2026" names in a
+   * record from elsewhere, is the editor's decision. The message names the
+   * value; it goes when the editor enters one.
+   */
+  private showMismatch(): void {
+    const mismatch = this.valueMismatch();
+    if (mismatch) {
+      this.validationError = mismatch;
+      this.mismatchShown = true;
+    } else if (this.mismatchShown) {
+      this.validationError = null;
+      this.mismatchShown = false;
+    }
+  }
+  private mismatchShown = false;
+
+  private valueMismatch(): string | null {
+    const value = this.field.value;
+    if (value === null || value === undefined || value === '') return null;
+    if (Array.isArray(value)) {
+      if (this.isListField || value.length === 0) return null;
+      const values = value.map(item => this.getChipDisplayValue(item)).join(', ');
+      return this.text('VALIDATION.STORED_LIST_ON_SINGLE', { values },
+        `The record holds several values here (${values}), but this field takes only one. Please enter the one that applies.`);
+    }
+    if (this.isListField) return null; // one entry of the list, shown as a chip
+    const unreadable =
+      (this.field.datatype === 'date' && !isIsoDate(String(value))) ||
+      ((this.field.datatype === 'number' || this.field.datatype === 'integer')
+        && typeof value !== 'number' && Number.isNaN(Number(value)));
+    return unreadable
+      ? this.text('VALIDATION.STORED_VALUE_UNREADABLE', { value: String(value) },
+        `The stored value “${String(value)}” does not fit this field and is not shown in it. Please enter it again.`)
+      : null;
+  }
+
+  /** A translation, or `fallback` while the agent serves texts without this key. */
+  private text(key: string, params: Record<string, unknown>, fallback: string): string {
+    const translated = this.translate.instant(key, params);
+    return translated && translated !== key ? translated : fallback;
+  }
+
   private updateInputValue(): void {
     // For array fields, input is always empty (values shown as chips)
-    if (Array.isArray(this.field.value)) {
+    if (Array.isArray(this.field.value) || this.isListField) {
       this.inputValue = '';
     } else if (this.field.datatype === 'time' && this.field.value) {
       // Extract HH:MM from any format (ISO datetime, plain time, etc.)
@@ -296,13 +482,16 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     } else {
       this.inputValue = '';
     }
+    this.shownValue = this.inputValue;
+    this.clockValue = this.timeOfDay(this.field.datatype === 'datetime' ? this.dateTimeTimeValue : this.inputValue);
     // Parse date string to Date object for mat-datepicker (date-only fields)
     if (this.field.datatype === 'date' && this.field.value) {
-      const parsed = new Date(String(this.field.value) + 'T00:00:00');
-      this.dateValue = isNaN(parsed.getTime()) ? null : parsed;
+      const stored = String(this.field.value).trim();
+      this.dateValue = isIsoDate(stored) ? new Date(`${stored}T00:00:00`) : null;
     } else if (this.field.datatype !== 'datetime') {
       this.dateValue = null;
     }
+    this.showMismatch();
   }
 
   private formatDateTime(val: string): string {
@@ -356,7 +545,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   private getVocabularyDef(): VocabularyDef | null {
     if (!this.field.vocabulary?.concepts) return null;
     // Both 'closed' and 'skos' are treated as controlled vocabularies
-    const vocabType = this.field.vocabulary.type as string;
+    const vocabType = this.field.vocabulary.type;
     const isClosed = vocabType === 'closed' || vocabType === 'skos';
     return {
       type: isClosed ? 'closed' : 'open',
@@ -371,13 +560,44 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   }
   
   onBlur(): void {
-    // Delay to allow autocomplete click
+    this.dropPendingBlur();
+    // Taken at once: a click on "Hochladen" right after typing read the form
+    // before a delayed value was in it (W-LOG-01). Only an open autocomplete
+    // panel needs the delay - a click on one of its options blurs the input
+    // first, and the typed fragment must not get ahead of the chosen option.
+    if (!this.autocompleteTrigger?.panelOpen) {
+      this.commitInput();
+      return;
+    }
+    const commit = () => {
+      this.dropPendingBlur();
+      this.commitInput();
+    };
+    this.blurTimer = setTimeout(commit, 200);
+    this.releaseInput = holdInput(commit);
+  }
+
+  private commitInput(): void {
+    if (this.inputValue.trim()) {
+      this.processInputValue();
+    } else if (this.shownValue && !(this.field.multiple || this.field.datatype === 'array')) {
+      // Emptied by the editor: the value is gone (W-LOG-02). Not for a list,
+      // whose input is only the draft of the next chip, and not for a value
+      // the input never showed - leaving it is no change (L-01).
+      this.validationError = null;
+      this.valueChange.emit(null);
+      this.cdr.markForCheck();
+    } else if (this.mismatchShown && !this.validationError) {
+      // Typed and deleted again: the stored value still does not fit (W-43).
+      this.showMismatch();
+      this.cdr.markForCheck();
+    }
+  }
+
+  private dropPendingBlur(): void {
     clearTimeout(this.blurTimer);
-    this.blurTimer = setTimeout(() => {
-      if (this.inputValue.trim()) {
-        this.processInputValue();
-      }
-    }, 200);
+    this.releaseInput?.();
+    this.releaseInput = undefined;
   }
   
   onKeyPress(event: KeyboardEvent): void {
@@ -429,7 +649,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     
     if (this.field.multiple || this.field.datatype === 'array') {
       // Add to array
-      const currentValues = Array.isArray(this.field.value) ? [...this.field.value] : [];
+      const currentValues = [...this.listValue()];
       const newValues = Array.isArray(normalizedValue) 
         ? normalizedValue.filter(v => !currentValues.includes(v))
         : [normalizedValue].filter(v => !currentValues.includes(v));
@@ -456,7 +676,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     const resolvedValue = this.resolveVocabValue(option);
     
     if (this.field.multiple || this.field.datatype === 'array') {
-      const currentValues = Array.isArray(this.field.value) ? [...this.field.value] : [];
+      const currentValues = [...this.listValue()];
       if (!currentValues.includes(resolvedValue)) {
         this.valueChange.emit([...currentValues, resolvedValue]);
       }
@@ -494,16 +714,24 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   }
   
   removeChip(item: any): void {
-    if (!Array.isArray(this.field.value)) return;
-    const newValue = this.field.value.filter(v => v !== item);
-    this.valueChange.emit(newValue);
+    this.valueChange.emit(this.listValue().filter(v => v !== item));
   }
   
   onDateChange(event: any): void {
     const date: Date | null = event.value;
-    if (date instanceof Date && isNaN(date.getTime())) {
+    // Material hands over null for text it cannot read as well as for an empty
+    // input; only the input's own text tells them apart.
+    const typed = String(event.targetElement?.value ?? '').trim();
+    if ((date instanceof Date && isNaN(date.getTime())) || (!date && typed)) {
       // Typed text the adapter could not read: say so instead of dropping it (W-L3).
       this.validationError = this.translate.instant('VALIDATION.INVALID_DATE');
+      this.cdr.markForCheck();
+      return;
+    }
+    if (!date) {
+      // Emptied by the editor (W-LOG-02); without a value before, no change (L-01).
+      this.validationError = '';
+      if (!sameValue(null, this.field.value)) this.valueChange.emit(null);
       this.cdr.markForCheck();
       return;
     }
@@ -539,6 +767,39 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     this.cdr.markForCheck();
   }
 
+  /** `HH:MM` as a time of today, for the clock; null for anything else. */
+  private timeOfDay(text: string): Date | null {
+    const match = this.field.value ? /^(\d{1,2}):(\d{2})$/.exec(text) : null;
+    if (!match || +match[1] > 23 || +match[2] > 59) return null;
+    const time = new Date();
+    time.setHours(+match[1], +match[2], 0, 0);
+    return time;
+  }
+
+  /** A time picked from the clock's list, as the `HH:MM` the field stores. */
+  private pickedTime(time: Date): string {
+    return `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
+  }
+
+  onTimePicked(time: Date): void {
+    this.onTimeStringChange(this.pickedTime(time));
+    this.cdr.markForCheck();
+  }
+
+  onDateTimeTimePicked(time: Date): void {
+    this.onDateTimeTimeChange(this.pickedTime(time));
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * The clock closed: the focus goes to the field's own input. The clock
+   * leaves it on its anchor, which nobody sees - after a choice it puts it
+   * there once more when it has told us, hence a moment later.
+   */
+  focusInput(): void {
+    void Promise.resolve().then(() => this.elRef.nativeElement.querySelector<HTMLElement>('input[matInput]')?.focus());
+  }
+
   onTimeStringChange(timeStr: string): void {
     if (timeStr) {
       this.inputValue = timeStr;
@@ -559,8 +820,9 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     if (this.inputValue === this.formatDateTime(String(this.field.value ?? ''))) {
       this.validationError = '';
     } else {
-      const iso = parseDateTime(this.inputValue);
-      if (iso) {
+      const typed = parseDateTime(this.inputValue);
+      if (typed) {
+        const iso = keepSecondsAndOffset(typed, this.field.value);
         this.inputValue = this.formatDateTime(iso);
         if (!sameValue(iso, this.field.value)) this.valueChange.emit(iso);
         this.validationError = '';
@@ -585,7 +847,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     const sep = dateSeparator(this.dateLocale);
     this.inputValue = `${day}${sep}${month}${sep}${year} ${time}`;
     this.dateTimeTimeValue = time;
-    this.valueChange.emit(`${year}-${month}-${day}T${time}`);
+    this.valueChange.emit(keepSecondsAndOffset(`${year}-${month}-${day}T${time}`, this.field.value));
     this.validationError = '';
   }
 
@@ -604,7 +866,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     // Normalize time to HH:MM (strip seconds if present)
     const tMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
     const normalizedTime = tMatch ? `${tMatch[1].padStart(2, '0')}:${tMatch[2]}` : timeStr;
-    const newIso = `${datePart}T${normalizedTime}`;
+    const newIso = keepSecondsAndOffset(`${datePart}T${normalizedTime}`, this.field.value);
     this.inputValue = this.formatDateTime(newIso);
     this.dateTimeTimeValue = normalizedTime;
     this.valueChange.emit(newIso);
@@ -694,7 +956,7 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
 
   /** Enter, Space or Arrow down open the picker, as on a native select. */
   onPickerKeydown(event: KeyboardEvent): void {
-    if (this.readonly || this.pickerOpen) return;
+    if (this.pickerOpen) return;
     if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
       event.preventDefault();
       this.openPicker();
@@ -746,11 +1008,12 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
   /**
    * Get radio options from vocabulary concepts or boolean values
    */
-  getRadioOptions(): { label: string; value: string }[] {
+  getRadioOptions(): { label: string; value: string | boolean }[] {
     if (this.field.datatype === 'boolean') {
+      // Real booleans, as the agent sends and expects them (W-LOG-07).
       return [
-        { label: this.translate.instant('FIELD.BOOLEAN.TRUE'), value: 'true' },
-        { label: this.translate.instant('FIELD.BOOLEAN.FALSE'), value: 'false' }
+        { label: this.translate.instant('FIELD.BOOLEAN.TRUE'), value: true },
+        { label: this.translate.instant('FIELD.BOOLEAN.FALSE'), value: false }
       ];
     }
     if (!this.field.vocabulary?.concepts) return [];
@@ -761,7 +1024,18 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     });
   }
 
-  onRadioChange(value: string): void {
+  /**
+   * The value the radio group selects by. A boolean stored as text ('true',
+   * 'ja' - older records, imports) selects its option like the boolean (W-LOG-07).
+   */
+  private getRadioValue(): unknown {
+    const value = this.field.value;
+    if (this.field.datatype !== 'boolean' || typeof value !== 'string') return value;
+    const result = this.validation.validate(value, { datatype: 'boolean' });
+    return result.valid ? result.normalizedValue : value;
+  }
+
+  onRadioChange(value: string | boolean | null): void {
     this.valueChange.emit(value);
     this.validationError = null;
   }

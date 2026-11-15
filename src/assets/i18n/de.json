@@ -16,21 +16,24 @@
     "MODE_TEXT": "Text",
     "MODE_URL": "URL",
     "MODE_NODE_ID": "Node-ID",
-    "MODE_PAGE": "Webseite laden"
+    "MODE_PAGE": "Webseite laden",
+    "MODE_LABEL": "Eingabeart"
   },
   "CONTENT_TYPE": {
-    "SELECT": "Inhaltsart wählen",
+    "SELECT": "Inhaltstyp wählen",
     "NOT_DETECTED": "Bitte wählen"
   },
   "PROGRESS": {
     "FIELDS": "Felder",
     "REQUIRED": "Pflicht",
     "FIELDS_FILLED": "Felder gefüllt",
-    "FIELDS_RECOGNIZED": "Felder erkannt"
+    "FIELDS_RECOGNIZED": "Felder erkannt",
+    "EXTRACTION_RUNNING": "Extraktion läuft …",
+    "CANCEL_EXTRACTION": "Extraktion abbrechen"
   },
   "FIELD": {
     "REQUIRED_HINT": "Pflichtfeld – muss ausgefüllt werden",
-    "VOCABULARY_CONTROLLED": "Nutze ausschließlich Begriffe aus dem geschlossenen Vokabular.",
+    "VOCABULARY_CONTROLLED": "Nutzen Sie ausschließlich Begriffe aus dem geschlossenen Vokabular.",
     "ARRAY_PLACEHOLDER": "Werte kommasepariert eingeben",
     "STATUS": {
       "EXTRACTING": "Wird extrahiert..."
@@ -55,7 +58,14 @@
     "DATE_PLACEHOLDER": "TT.MM.JJJJ",
     "DATETIME_PLACEHOLDER": "TT.MM.JJJJ HH:MM",
     "DURATION_PLACEHOLDER": "z. B. PT2H, P1D, 2 Stunden",
-    "OPEN_CLOCK": "Uhr öffnen"
+    "OPEN_CLOCK": "Uhr öffnen",
+    "CHOOSE_TIME": "Uhrzeit wählen",
+    "ADD_ENTRY": "Eintrag hinzufügen",
+    "ADD_ENTRY_FOR": "Eintrag hinzufügen: {{field}}",
+    "REMOVE_ENTRY": "Eintrag entfernen",
+    "REMOVE_ENTRY_FOR": "Eintrag entfernen: {{field}}, Eintrag {{number}}",
+    "VOCAB_LEVEL": "Ebene {{level}}",
+    "VOCAB_SHOW_MORE": "Weitere Einträge anzeigen (noch {{remaining}})"
   },
   "PREVIEW": {
     "TITLE": "Vorschaubild",
@@ -95,7 +105,9 @@
     "INVALID_DURATION": "Ungültige Dauer (Format: P1D, PT3H, \"2 Stunden\")",
     "INVALID_JSON": "Ungültiges JSON-Format",
     "EXPECTED_OBJECT": "Erwartet: Objekt (kein Array oder einfacher Wert)",
-    "REPAIRED_TO_OBJECT": "Als „{{field}}“ übernommen – dieses Feld erwartet ein Objekt, keinen Text."
+    "REPAIRED_TO_OBJECT": "Als „{{field}}“ übernommen – dieses Feld erwartet ein Objekt, keinen Text.",
+    "STORED_LIST_ON_SINGLE": "Der Datensatz enthält hier mehrere Werte ({{values}}), das Feld nimmt aber nur einen. Bitte den zutreffenden eintragen.",
+    "STORED_VALUE_UNREADABLE": "Der gespeicherte Wert „{{value}}“ passt nicht zu diesem Feld und wird darin nicht angezeigt. Bitte neu eintragen."
   },
   "ALERTS": {
     "INPUT_REQUIRED": "Bitte geben Sie einen Text ein.",
@@ -108,55 +120,55 @@
     "UPLOAD_TIMEOUT_DISCARDED": "Der dabei angelegte Node wurde wieder entfernt.",
     "UPLOAD_TIMEOUT_NODE_KEPT": "Der Node {{nodeId}} existiert weiterhin im Repository – bitte prüfen, bevor Sie erneut hochladen.",
     "UNKNOWN_ERROR": "Unbekannter Fehler",
+    "NETWORK_UNREACHABLE": "Der Metadaten-Agent ist nicht erreichbar. Bitte die Netzwerkverbindung prüfen und erneut versuchen.",
+    "SERVICE_UNAVAILABLE": "Der Metadaten-Agent antwortet gerade nicht (HTTP {{status}}). Bitte später erneut versuchen.",
+    "SERVICE_TIMEOUT": "Die Anfrage hat zu lange gedauert und wurde auf dem Weg zum Metadaten-Agenten abgebrochen (HTTP {{status}}). Bitte erneut versuchen.",
     "SCHEMA_INIT_FAILED": "Die Felder konnten nicht geladen werden: {{error}}",
-    "METADATA_LOAD_ERROR": "Die übergebenen Metadaten konnten nicht geladen werden: {{error}}"
+    "METADATA_LOAD_ERROR": "Die übergebenen Metadaten konnten nicht geladen werden: {{error}}",
+    "METADATA_INPUT_INVALID": "Die übergebenen Metadaten sind kein gültiges JSON-Objekt und wurden nicht geladen.",
+    "ANSWER_UNREADABLE": "Die Antwort ist kein Ergebnis des Metadaten-Agenten. Bitte die Adresse des Agenten (api-url) prüfen.",
+    "ACCESS_DENIED": "Die Anfrage wurde abgelehnt (HTTP {{status}}): nicht angemeldet oder keine Berechtigung für den Metadaten-Agenten.",
+    "AGENT_NOT_FOUND": "Der Metadaten-Agent wurde unter seiner Adresse nicht gefunden (HTTP {{status}}). Bitte die Adresse des Agenten (api-url) prüfen.",
+    "REQUEST_TOO_LARGE": "Die Eingabe ist für den Metadaten-Agenten zu groß (HTTP {{status}}). Bitte den Text kürzen.",
+    "REQUEST_INVALID": "Der Metadaten-Agent hat die Anfrage als ungültig zurückgewiesen (HTTP {{status}}).",
+    "TOO_MANY_REQUESTS": "Im Moment gehen zu viele Anfragen ein (HTTP {{status}}). Bitte kurz warten und erneut versuchen.",
+    "REQUEST_FAILED": "Die Anfrage an den Metadaten-Agenten ist fehlgeschlagen (HTTP {{status}}).",
+    "REQUEST_TIMEOUT": "Der Metadaten-Agent hat nicht rechtzeitig geantwortet. Bitte erneut versuchen.",
+    "UPLOAD_NO_ANSWER": "Der Upload hat nicht rechtzeitig geantwortet. Ob der Node angelegt wurde, ist offen – bitte im Repository prüfen, bevor Sie erneut hochladen.",
+    "UPLOAD_FORM_INCOMPLETE": "Nicht hochgeladen: Die Felder dieses Formulars konnten nicht vollständig geladen werden. Bitte den Inhaltstyp erneut wählen oder die Seite neu laden.",
+    "RECORD_OTHER_SCHEMA": "Dieser Datensatz wurde mit einem anderen Schema erstellt ({{recordContext}} {{recordVersion}}). Das Formular zeigt ihn mit {{context}} {{version}} und speichert ihn auch so."
   },
   "LANGUAGE": {
     "SWITCH_TO_ENGLISH": "Switch to English",
     "SWITCH_TO_GERMAN": "Zu Deutsch wechseln"
   },
   "LAYOUT": {
-    "DEFAULT": {
-      "NAME": "Standard",
-      "DESCRIPTION": "Bearbeitungsmodus für lokale, gehostete, Bookmarklet- und Browser-Extension-Nutzung"
-    },
-    "CLEAN": {
-      "NAME": "Clean",
-      "DESCRIPTION": "Minimale, rahmenlose Ansicht für Einbettung und Review"
-    },
     "ALL_FIELDS": "Alle Felder",
-    "CORE_FIELDS": "Basis",
-    "DETAIL": {
-      "NAME": "Detail",
-      "DESCRIPTION": "Mehrspaltige, schreibgeschützte Ansicht"
-    },
-    "DIALOG": {
-      "NAME": "Dialog",
-      "DESCRIPTION": "Kompakter Prüfdialog"
-    },
-    "PLUGIN": {
-      "NAME": "Plugin",
-      "DESCRIPTION": "Kompakte Seitenleiste für die Browser-Erweiterung"
-    },
-    "PRUEFTISCH": {
-      "NAME": "Prüftisch",
-      "DESCRIPTION": "Prüfansicht mit Karten für edu-sharing"
-    },
-    "PRUEFTISCH_ORG": {
-      "NAME": "Prüftisch (Organisation)",
-      "DESCRIPTION": "Prüfansicht für Organisationen"
-    }
+    "CORE_FIELDS": "Basis"
   },
   "EXTRACTION_RESULT": {
     "FAILED": "KI-Erschließung fehlgeschlagen",
     "PARTIAL": "Nur {{extracted}} von {{total}} Feldern wurden generiert, {{failed}} Feldabfragen sind fehlgeschlagen.",
-    "CONTENT_TYPE_UNCERTAIN": "Die Inhaltsart wurde nicht sicher erkannt und vorläufig als „{{type}}“ eingeordnet – bitte prüfen und bei Bedarf ändern.",
+    "CONTENT_TYPE_UNCERTAIN": "Der Inhaltstyp wurde nicht sicher erkannt und vorläufig als „{{type}}“ eingeordnet – bitte prüfen und bei Bedarf ändern.",
     "INCOMPLETE_RESPONSE": "Die Antwort des Metadaten-Agenten enthielt kein Ergebnis.",
     "REQUEST_ID": "Anfrage-ID: {{id}}",
-    "SCHEMA_UNAVAILABLE": "Die Felder der Inhaltsart „{{type}}“ konnten nicht geladen werden. Bitte später erneut versuchen."
+    "SCHEMA_UNAVAILABLE": "Die Felder des Inhaltstyps „{{type}}“ konnten nicht geladen werden. Bitte später erneut versuchen."
   },
   "ANNOUNCE": {
     "EXTRACTION_STARTED": "Extraktion läuft …",
     "EXTRACTION_DONE": "Extraktion abgeschlossen. Ausgefüllte Felder: {{count}}."
+  },
+  "DATEPICKER": {
+    "CALENDAR": "Kalender",
+    "OPEN_CALENDAR": "Kalender öffnen",
+    "CLOSE_CALENDAR": "Kalender schließen",
+    "PREV_MONTH": "Vorheriger Monat",
+    "NEXT_MONTH": "Nächster Monat",
+    "PREV_YEAR": "Vorheriges Jahr",
+    "NEXT_YEAR": "Nächstes Jahr",
+    "PREV_MULTI_YEAR": "Vorherige 24 Jahre",
+    "NEXT_MULTI_YEAR": "Nächste 24 Jahre",
+    "SWITCH_TO_MONTH_VIEW": "Datum wählen",
+    "SWITCH_TO_MULTI_YEAR_VIEW": "Monat und Jahr wählen"
   }
 }

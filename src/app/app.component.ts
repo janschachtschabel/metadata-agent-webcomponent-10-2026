@@ -14,7 +14,7 @@ const DEVELOPMENT_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
  *   ?viewerMode=true     - Backward compat, maps to readonly=true
  *   ?readonly=true       - Enable readonly mode
  *   ?borderless=true     - Enable borderless mode
- *   ?flatGroups=true     - Merge field groups into one per schema
+ *   ?flatGroups=true     - All fields in one group
  *   ?showStatusBar=true  - Show status bar
  *   ?controls=true       - Show floating controls
  *   ?showContentType=false - Hide content type button
@@ -41,8 +41,7 @@ const DEVELOPMENT_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
       [schemaVersion]="schemaVersion"
       [layout]="layout"
       [columns]="columns"
-      [viewerMode]="viewerMode"
-      [readonly]="readonly"
+      [readonly]="readonly ?? viewerMode"
       [borderless]="borderless"
       [showStatusBar]="showStatusBar"
       [controls]="controls"
@@ -72,6 +71,12 @@ export class AppComponent implements OnInit {
   schemaVersion = 'latest';
   layout = 'default';
   metadataInput: Record<string, unknown> | null = null;
+  /**
+   * `?viewerMode` / `?viewer`, the old name for `?readonly`. Bound as
+   * `readonly` and not through the canvas' viewerMode input: a `[readonly]`
+   * binding without `?readonly` hands over undefined, "not set", after it and
+   * took back what viewerMode had set (audit 14.11., U-11).
+   */
   viewerMode: boolean | undefined = undefined;
   readonly: boolean | undefined = undefined;
   borderless: boolean | undefined = undefined;

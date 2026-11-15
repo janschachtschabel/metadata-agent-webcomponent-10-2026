@@ -2,17 +2,16 @@ import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from 
 import { CommonModule } from '@angular/common';
 import { TranslateModule } from '@ngx-translate/core';
 import { MatIconModule } from '@angular/material/icon';
-import { MatMenuModule } from '@angular/material/menu';
-import { MatButtonModule } from '@angular/material/button';
 
 import { ContentType } from '../../../shared/models/canvas.models';
 import { LayoutBase } from '../layout-base';
 import { FieldComponent } from '../../field/field.component';
-import { LanguageSwitcherComponent } from '../../language-switcher/language-switcher.component';
 import { InputAreaComponent } from '../../shared/input-area/input-area.component';
 import { StatusBarComponent } from '../../shared/status-bar/status-bar.component';
+import { ExtractionFeedbackComponent } from '../../shared/extraction-feedback/extraction-feedback.component';
+import { FloatingBarComponent } from '../../shared/floating-bar/floating-bar.component';
+import { GroupHeaderComponent } from '../../shared/group-header/group-header.component';
 import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/preview-thumbnail.component';
-import { uniqueId } from '../../../shared/unique-id';
 import { SvgIconComponent } from '../../shared/svg-icon/svg-icon.component';
 
 /**
@@ -40,12 +39,12 @@ import { SvgIconComponent } from '../../shared/svg-icon/svg-icon.component';
     CommonModule,
     TranslateModule,
     MatIconModule,
-    MatMenuModule,
-    MatButtonModule,
     FieldComponent,
-    LanguageSwitcherComponent,
     InputAreaComponent,
     StatusBarComponent,
+    ExtractionFeedbackComponent,
+    FloatingBarComponent,
+    GroupHeaderComponent,
     PreviewThumbnailComponent,
     SvgIconComponent,
   ],
@@ -54,9 +53,8 @@ import { SvgIconComponent } from '../../shared/svg-icon/svg-icon.component';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CleanLayoutComponent extends LayoutBase {
+  override groupCollapse = true;
   // Data from parent
-  /** Prefix of the ids aria-controls points at; unique per instance. */
-  readonly _uid = uniqueId('layout');
   @Input() contentTypes: ContentType[] = [];
   @Input() backgroundColor = '';
   @Input() columns: 1 | 2 | 3 | 4 = 2;
@@ -69,12 +67,10 @@ export class CleanLayoutComponent extends LayoutBase {
   // Element visibility
   @Input() showInputArea = false;
   @Input() showStatusBar = true;
-  @Input() showFieldActions = true;
   @Input() showFloatingControls = true;
   @Input() showContentTypeOnly = false;
   @Input() showLanguageSwitcher = true;
   @Input() showContentType = true;
-  @Input() showResetButton = true;
   @Input() highlightAi = true;
   @Input() showPreview = true;
   @Input() screenshotEnabled = true;

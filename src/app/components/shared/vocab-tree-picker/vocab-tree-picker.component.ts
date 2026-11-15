@@ -20,10 +20,17 @@ import { MatInputModule } from '@angular/material/input';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { A11yModule } from '@angular/cdk/a11y';
 
 import { VocabularyConcept } from '../../../shared/models/canvas.models';
+
+/**
+ * How many entries the list renders at a time. A vocabulary of several
+ * hundred concepts built a checkbox for each of them when the picker opened
+ * (audit 14.11., U-15); the rest follows from the button at the end of the
+ * list, and the filter searches all of them.
+ */
+const PAGE_SIZE = 200;
 
 export interface TreeNode {
   concept: VocabularyConcept;
@@ -81,7 +88,6 @@ export function pickerPanelPosition(
     MatIconModule,
     MatCheckboxModule,
     MatButtonModule,
-    MatTooltipModule,
     A11yModule
   ],
   templateUrl: './vocab-tree-picker.component.html',
@@ -107,6 +113,9 @@ export class VocabTreePickerComponent implements OnInit, OnChanges, AfterViewChe
   filterText = '';
   treeNodes: TreeNode[] = [];
   flatVisibleNodes: TreeNode[] = [];
+  /** The part of flatVisibleNodes that is rendered. */
+  shownNodes: TreeNode[] = [];
+  private renderLimit = PAGE_SIZE;
   panelStyle: Record<string, string> = {};
   private needsFocus = false;
 
@@ -142,6 +151,7 @@ export class VocabTreePickerComponent implements OnInit, OnChanges, AfterViewChe
     if (!this.concepts?.length) {
       this.treeNodes = [];
       this.flatVisibleNodes = [];
+      this.shownNodes = [];
       return;
     }
 
@@ -218,6 +228,7 @@ export class VocabTreePickerComponent implements OnInit, OnChanges, AfterViewChe
 
   private applyFilter(): void {
     const term = this.filterText.toLowerCase().trim();
+    this.renderLimit = PAGE_SIZE; // another list: from its start
 
     if (!term) {
       // Show all, collapse all
@@ -271,6 +282,19 @@ export class VocabTreePickerComponent implements OnInit, OnChanges, AfterViewChe
       }
     };
     collect(this.treeNodes);
+    this.shownNodes = this.flatVisibleNodes.slice(0, this.renderLimit);
+  }
+
+  /** Renders the next page; the focus goes to its first entry, where reading goes on. */
+  showMore(): void {
+    const first = this.shownNodes.length;
+    this.renderLimit += PAGE_SIZE;
+    this.shownNodes = this.flatVisibleNodes.slice(0, this.renderLimit);
+    this.cdr.markForCheck();
+    setTimeout(() => {
+      const entry = (this.elRef.nativeElement as HTMLElement).querySelectorAll('.tree-node')[first];
+      entry?.querySelector<HTMLElement>('input, button.node-choice')?.focus();
+    });
   }
 
   toggleExpand(node: TreeNode, event: Event): void {

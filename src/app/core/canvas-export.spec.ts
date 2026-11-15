@@ -112,7 +112,7 @@ describe('CanvasService export follows the form (W-L1)', () => {
       getSchema: (_c: string, _v: string, file: string) => Promise.resolve(SCHEMAS[file]),
       generate,
     };
-    schema = new SchemaService({} as any, quiet as any, i18n as any, api as any);
+    schema = new SchemaService(quiet as any, i18n as any, api as any);
     service = new CanvasService(schema, api as any, i18n as any, quiet as any, new ShapeExpanderService(schema), { run: (fn: () => unknown) => fn() } as any);
   });
 
@@ -123,16 +123,48 @@ describe('CanvasService export follows the form (W-L1)', () => {
     return service.getMetadataForRepository()['metadata'];
   }
 
-  it('exports a generated form as before (characterization)', async () => {
+  it('exports a generated form as it was generated', async () => {
     await service.startExtraction('Quelltext');
 
-    // As measured before the fix: the object is rebuilt from its subfields
-    // (the discriminator is not one of them).
-    expect(exported()).toEqual({
-      ...PAGE_AS_A,
-      'schema:contactPoint': [{ contactType: 'Kasse', email: 'kasse@example.org' }],
-    });
+    // Changed on purpose (audit 13.11., W-LOG-03). This used to pin the export
+    // as measured in 3.0.0: the object rebuilt from its subfields alone, so
+    // without `@type`. That was the defect - the next import took the first
+    // variant. The object now comes back as the agent sent it.
+    expect(exported()).toEqual(PAGE_AS_A);
     expect(service.getMetadataForExport()['metadataset']).toBe('a.json');
+  });
+
+  // Audit 13.11. (W-LOG-04): /generate always ran with 'latest' while the form
+  // was built from schema-version, and the record named 'vlatest' as its version.
+  describe('the schema version', () => {
+    it('asks /generate for the version the form is built from', async () => {
+      await schema.setContext('default', '1.8.1');
+
+      await service.startExtraction('Quelltext');
+
+      expect(generate.calls.mostRecent().args[0].version).toBe('1.8.1');
+    });
+
+    it('asks for "latest" when the host set no version', async () => {
+      await service.startExtraction('Quelltext');
+
+      expect(generate.calls.mostRecent().args[0].version).toBe('latest');
+    });
+
+    it('names the version the agent resolved "latest" to in the record', async () => {
+      api.getSchema = (_c: string, _v: string, file: string) => Promise.resolve({ ...(SCHEMAS[file] as object), version: '2.0.0' });
+
+      await service.importJsonData({ metadataset: 'a.json', metadata: PAGE_AS_A });
+
+      expect(service.getMetadataForExport()['schemaVersion']).toBe('v2.0.0');
+      expect(service.getMetadataForRepository()['schemaVersion']).toBe('v2.0.0');
+    });
+
+    it('names the configured version while the agent has not said which one it is', async () => {
+      await schema.setContext('default', '1.8.1');
+
+      expect(service.getMetadataForExport()['schemaVersion']).toBe('v1.8.1');
+    });
   });
 
   it('exports a subfield edit inside its object, not as a dotted key', async () => {

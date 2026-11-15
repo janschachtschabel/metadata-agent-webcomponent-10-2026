@@ -119,16 +119,22 @@ describe('WidgetNoticeComponent', () => {
     expect(closed).toEqual([true, false, false]);
   });
 
-  it('draws the information icon without an icon font', async () => {
-    // edu-sharing's icon font (Material Symbols) has no ligature "info_outline".
-    const box = await show({ text: 'Gespeichert', kind: 'info' });
-    const icon = box.querySelector('mat-icon') as HTMLElement;
-    expect(icon.querySelector('svg')).not.toBeNull();
-    expect(icon.textContent?.trim()).toBe('');
+  // edu-sharing's icon font (Material Symbols) has no ligature "info_outline";
+  // "error_outline" and "help_outline" may be missing as well (audit 14.11., U-07).
+  const KINDS: [string, Notice, string][] = [
+    ['information', { text: 'Gespeichert', kind: 'info' }, 'M11 7h2v2h-2z'],
+    ['error', { text: 'Fehlgeschlagen', kind: 'error' }, 'M11 15h2v2h-2z'],
+    ['question', { text: 'Trotzdem hochladen?', kind: 'info', question: true }, 'M11 18h2v-2h-2v2z'],
+  ];
+  for (const [name, notice, start] of KINDS) {
+    it(`draws the ${name} icon without an icon font`, async () => {
+      const box = await show(notice);
+      const icon = box.querySelector('mat-icon') as HTMLElement;
 
-    const error = await show({ text: 'Fehlgeschlagen', kind: 'error' });
-    expect(error.querySelector('mat-icon')?.textContent?.trim()).toBe('error_outline');
-  });
+      expect(icon.querySelector('svg path')?.getAttribute('d')).toContain(start);
+      expect(icon.textContent?.trim()).toBe('');
+    });
+  }
 
   it('can be dismissed', async () => {
     const box = await show({ text: 'Upload erfolgreich', kind: 'info' });

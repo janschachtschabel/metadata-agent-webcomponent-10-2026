@@ -3,6 +3,26 @@ import { BehaviorSubject, Subject } from 'rxjs';
 import { CanvasComponent } from './canvas.component';
 
 /**
+ * Hands a record in with the first inputs of an element, as Angular does:
+ * the setter, then the first ngOnChanges - which starts the import, once all
+ * first inputs are there (audit 14.11., W-48).
+ */
+function handIn(component: CanvasComponent, value: unknown): void {
+  component.metadataInput = value as Record<string, unknown>;
+  component.ngOnChanges({ metadataInput: new SimpleChange(null, value, true) });
+}
+
+/** A schema service whose schemas load: the canvas asks again before an import or a run (K-22). */
+function loadedSchema(): Record<string, unknown> {
+  return {
+    setContext: async () => undefined,
+    loadCoreSchema: async () => ({ fields: [], groups: [] }),
+    getContentTypes: async () => [],
+    resolveSchemaFileOrUri: (file: string) => file,
+  };
+}
+
+/**
  * Review 18.10.: the language stream is a BehaviorSubject. Subscribed before
  * the schema context was set, it relabelled an empty form and loaded the core
  * schema in parallel - in the default context, racing the configured one.
@@ -67,12 +87,13 @@ describe('CanvasComponent notices', () => {
       bindToInstance: () => undefined,
       getMetadataForRepository: () => metadata,
       getCurrentState: () => ({ userText: 'Quelltext' }),
+      hasSchemaError: () => false,
       reset: jasmine.createSpy('reset'),
     };
     api = { upload: jasmine.createSpy('upload') };
     component = new CanvasComponent(
       canvas,
-      {} as any,
+      loadedSchema() as any,
       api as any,
       {} as any,
       { instant: (key: string) => key } as any,
@@ -132,7 +153,7 @@ describe('CanvasComponent notices', () => {
 
   it('a new message answers an open question with "no"', async () => {
     const reset = component.reset();
-    (component as any).say('ALERTS.INPUT_REQUIRED');
+    component.startExtraction(); // nothing typed: the widget says so
     await reset;
 
     expect(canvas.reset).not.toHaveBeenCalled();
@@ -163,7 +184,7 @@ describe('CanvasComponent actions', () => {
   function create(): CanvasComponent {
     return new CanvasComponent(
       canvas,
-      {} as any,
+      loadedSchema() as any,
       api as any,
       {} as any,
       i18n as any,
@@ -178,6 +199,7 @@ describe('CanvasComponent actions', () => {
       getMetadataForRepository: () => ({ 'cclom:title': 'Titel' }),
       getMetadataForExport: () => ({ 'cclom:title': 'Titel' }),
       getCurrentState: () => ({ userText: 'Quelltext' }),
+      hasSchemaError: () => false,
       startExtraction: jasmine.createSpy('startExtraction'),
     };
     api = { upload: jasmine.createSpy('upload') };
@@ -287,19 +309,72 @@ describe('CanvasComponent actions', () => {
     expect(component.userText).toBe('');
   });
 
-  it('becomes the element that emits events when the primary one goes away (U-07)', () => {
+  // Audit 13.11. (W-LOG-09): behind the locked menu, too - a layout that
+  // forgets the lock must not start an AI run from a read-only view.
+  describe('a type picked in the menu', () => {
+    const PERSON = { label: 'Person', schemaFile: 'person.json', icon: 'person' };
+
+    beforeEach(() => {
+      canvas.changeContentTypeManually = jasmine.createSpy('changeContentTypeManually').and.resolveTo();
+    });
+
+    it('is ignored in a read-only view', async () => {
+      const component = create();
+      component.readonly = true;
+
+      await component.selectContentType(PERSON);
+
+      expect(canvas.changeContentTypeManually).not.toHaveBeenCalled();
+    });
+
+    it('is ignored in a layout that is read-only by itself', async () => {
+      const component = create();
+      component._layout = { ...component._layout, behavior: { ...component._layout.behavior, readonly: true } };
+
+      await component.selectContentType(PERSON);
+
+      expect(canvas.changeContentTypeManually).not.toHaveBeenCalled();
+    });
+
+    it('is applied while editing', async () => {
+      const component = create();
+
+      await component.selectContentType(PERSON);
+
+      expect(canvas.changeContentTypeManually).toHaveBeenCalledWith('person.json', 'Person', 'person');
+    });
+
+    // The Prüftisch sets content-type on its read-only element.
+    it('the host still sets the type of a read-only view', async () => {
+      const component = create();
+      component.readonly = true;
+      component.contentTypes = [PERSON];
+      (component as any).schema.resolveSchemaFileOrUri = (file: string) => file;
+
+      component.contentType = 'person.json';
+      await settle();
+
+      expect(canvas.changeContentTypeManually).toHaveBeenCalledWith('person.json', 'Person', 'person', jasmine.any(Function));
+    });
+  });
+
+  // Audit 14.11. (W-35): this used to pin that only the primary element of an
+  // instance emits metadataSubmit - so "Save" in any other element did
+  // nothing. The promotion of the next element to primary (U-07) is followed
+  // on metadataChange in canvas-shared-instance.spec.ts.
+  it('submits from the element whose button was pressed, primary or not', () => {
     const first = create();
     const second = create();
-    first.instanceId = 'u07-shared';
-    second.instanceId = 'u07-shared';
-    const submitted = spyOn(second.metadataSubmit, 'emit');
+    first.instanceId = 'w35-shared';
+    second.instanceId = 'w35-shared';
+    const fromFirst = spyOn(first.metadataSubmit, 'emit');
+    const fromSecond = spyOn(second.metadataSubmit, 'emit');
 
     second.submit();
-    expect(submitted).withContext('the first element still emits').not.toHaveBeenCalled();
 
+    expect(fromSecond).toHaveBeenCalledOnceWith({ 'cclom:title': 'Titel' });
+    expect(fromFirst).not.toHaveBeenCalled();
     first.ngOnDestroy();
-    second.submit();
-    expect(submitted).toHaveBeenCalled();
     second.ngOnDestroy();
   });
 
@@ -438,7 +513,7 @@ describe('CanvasComponent actions', () => {
         const component = create();
         spyOn(console, 'error');
 
-        component.ngOnChanges({ metadataInput: new SimpleChange(null, { 'cclom:title': 'X' }, true) });
+        handIn(component, { 'cclom:title': 'X' });
         await settle();
 
         expect(component.notice?.text).toBe('Metadata could not be loaded: Schema 502');
@@ -450,11 +525,61 @@ describe('CanvasComponent actions', () => {
       const component = create();
       spyOn(console, 'error');
 
-      component.ngOnChanges({ metadataInput: new SimpleChange(null, { 'cclom:title': 'X' }, true) });
+      handIn(component, { 'cclom:title': 'X' });
       await settle();
 
       expect(component.notice?.kind).toBe('error');
       expect(component.notice?.text).toContain('ALERTS.METADATA_LOAD_ERROR');
+    });
+
+    // Audit 13.11. (W-SEC-01): the attribute form of metadata-input is JSON
+    // text. It was imported as it came: every character a "field", the indices
+    // the keys of the exported record.
+    describe('metadata-input as text', () => {
+      beforeEach(() => {
+        canvas.importJsonData = jasmine.createSpy('importJsonData').and.resolveTo();
+        i18n.instant = ((key: string) => (key === 'ALERTS.METADATA_INPUT_INVALID' ? 'Kein gültiges JSON-Objekt' : key)) as any;
+      });
+
+      function input(value: unknown): Promise<void> {
+        const component = create();
+        handIn(component, value);
+        return settle().then(() => { shown = component; });
+      }
+      let shown: CanvasComponent;
+
+      it('is parsed once and imported as the record it is', async () => {
+        await input('{"metadataset":"event.json","metadata":{"cclom:title":"Konzert"}}');
+
+        expect(canvas.importJsonData).toHaveBeenCalledOnceWith(
+          { metadataset: 'event.json', metadata: { 'cclom:title': 'Konzert' } }, null);
+        expect(shown.notice).toBeNull();
+      });
+
+      for (const text of ['{"cclom:title": "Konz', 'Konzert', '["a","b"]', '42', 'null']) {
+        it(`${text} is refused with a message, not imported`, async () => {
+          await input(text);
+
+          expect(canvas.importJsonData).not.toHaveBeenCalled();
+          expect(shown.notice?.kind).toBe('error');
+          expect(shown.notice?.text).toBe('Kein gültiges JSON-Objekt');
+        });
+      }
+
+      it('an array handed in as a property is refused as well', async () => {
+        await input(['a', 'b']);
+
+        expect(canvas.importJsonData).not.toHaveBeenCalled();
+        expect(shown.notice?.text).toBe('Kein gültiges JSON-Objekt');
+      });
+
+      it('is refused in English while the translations are not loaded', async () => {
+        i18n.instant = ((key: string) => key) as any;
+
+        await input('Konzert');
+
+        expect(shown.notice?.text).toBe('metadata-input is not a JSON object.');
+      });
     });
 
     // Follow-up review 18.10.: only an image set in the same change survived.
@@ -470,8 +595,9 @@ describe('CanvasComponent actions', () => {
           new Promise<void>(resolve => (finishImport = () => { previewImageUrl = undefined; resolve(); })));
       });
 
-      it('keeps an image set in the same change (setters run before ngOnChanges)', async () => {
+      it('keeps an image set with the first inputs, after the record', async () => {
         const component = create();
+        component.metadataInput = { 'cclom:title': 'X' };
         component.previewImage = 'data:image/png;base64,HOST';
 
         component.ngOnChanges({
@@ -488,7 +614,7 @@ describe('CanvasComponent actions', () => {
         const component = create();
         component.previewImage = 'data:image/png;base64,HOST';
 
-        component.ngOnChanges({ metadataInput: new SimpleChange(null, { 'cclom:title': 'X' }, false) });
+        handIn(component, { 'cclom:title': 'X' });
         finishImport();
         await settle();
 
@@ -498,7 +624,7 @@ describe('CanvasComponent actions', () => {
       it('keeps an image the host set while the import was loading', async () => {
         const component = create();
 
-        component.ngOnChanges({ metadataInput: new SimpleChange(null, { 'cclom:title': 'X' }, true) });
+        handIn(component, { 'cclom:title': 'X' });
         component.previewImage = 'data:image/png;base64,HOST';
         finishImport();
         await settle();

@@ -1,5 +1,6 @@
 /** The canvas state as metadata: for re-extraction requests and for export/upload. */
-import { CanvasState, FieldStatus } from '../shared/models/canvas.models';
+import { CanvasFieldState, CanvasState, FieldStatus } from '../shared/models/canvas.models';
+import { isValueFilled } from './canvas-fields';
 import { SchemaService } from './schema.service';
 import { ShapeExpanderService } from './shape-expander.service';
 
@@ -8,33 +9,97 @@ export function withoutInternalKeys(metadata: Record<string, any>): Record<strin
   return Object.fromEntries(Object.entries(metadata).filter(([key]) => !key.startsWith('_')));
 }
 
+/** The keys around the fields of a record, as the agent answers and the widget exports it. */
+const ENVELOPE_KEYS = [
+  'contextName', 'schemaVersion', 'metadataset', 'metadataset_uri', 'language',
+  'exportedAt', 'processing', 'preview_image_url', '_origins', '_source_text',
+];
+/** Keys with which a host names the type of a record; no fields either. */
+const TYPE_KEYS = ['schemaFile', 'contentType'];
+
+/** What was handed in for an import is not a record (audit 14.11., W-34). */
+export class InvalidRecordError extends Error {}
+
+/** A record to import, taken apart: its fields and what stands around them. */
+export interface ImportedRecord {
+  /** The fields; of a nested record as they are, with the internal keys older exports put there. */
+  metadata: Record<string, any>;
+  /** The record's own type: schema file or type URI. */
+  schemaFile?: string;
+  origins?: Record<string, 'ai' | 'user'>;
+  sourceText?: string;
+  previewImageUrl?: string;
+  contextName?: string;
+  schemaVersion?: string;
+}
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
+}
+
+/**
+ * Reads a record in one of its two forms: nested (`{ metadataset, metadata: {…} }`,
+ * the widget's export) or flat (`{ metadataset, 'cclom:title': … }`, as the
+ * agent answers and stores it). Throws InvalidRecordError for anything else -
+ * a list, a text or a `metadata` that is no object used to be imported key by
+ * key ("0", "1", …) over the form (W-34).
+ *
+ * In the flat form the envelope keys are the envelope, never fields: they came
+ * back as fields of the record, `processing` and the screenshot included.
+ * `contentType` names the type where `metadataset` is absent - the README
+ * integration puts it into the record - and is no field either (W-39).
+ */
+export function readRecord(data: unknown): ImportedRecord {
+  if (!isPlainObject(data)) throw new InvalidRecordError('The import is not a record.');
+  const nested = data['metadata'];
+  if (nested !== undefined && nested !== null && !isPlainObject(nested)) {
+    throw new InvalidRecordError('The metadata of the import are not an object.');
+  }
+  const outside = new Set([...ENVELOPE_KEYS, ...TYPE_KEYS, 'metadata']);
+  const metadata: Record<string, any> = nested
+    ?? Object.fromEntries(Object.entries(data).filter(([key]) => !outside.has(key)));
+  // Internal keys at the top level (current format) or inside metadata (older exports).
+  const origins = data['_origins'] || metadata['_origins'];
+  return {
+    metadata,
+    schemaFile: text(data['metadataset']) || text(data['metadataset_uri']) || text(data['schemaFile']) || text(data['contentType']),
+    origins: isPlainObject(origins) ? origins : undefined,
+    sourceText: text(data['_source_text']) || text(metadata['_source_text']),
+    previewImageUrl: text(data['preview_image_url']) || text(metadata['preview_image_url']),
+    contextName: text(data['contextName']),
+    schemaVersion: text(data['schemaVersion']),
+  };
+}
+
+/**
+ * The value of a top-level field as the record holds it: an object field is
+ * put together from its subfields, every other field is its value.
+ */
+function recordValue(field: CanvasFieldState, allFields: CanvasFieldState[], shapeExpander: ShapeExpanderService): any {
+  return field.isParent && field.subFields?.length
+    ? shapeExpander.reconstructObjectFromSubFields(field, allFields)
+    : field.value;
+}
+
 export function collectMetadata(
   state: CanvasState,
   shapeExpander: ShapeExpanderService
 ): Record<string, any> {
   const metadata: Record<string, any> = {};
 
-  // Collect values from all fields
+  // The filled fields - by the rule for "empty" the record follows as well
+  // (isValueFilled; audit 14.11., W-41). Subfields come with their parent.
   const allFields = [...state.coreFields, ...state.specialFields];
-  
+
   for (const field of allFields) {
-    // For parent fields with subfields, reconstruct the complex object
-    if (field.isParent && field.subFields && field.subFields.length > 0) {
-      const reconstructed = shapeExpander.reconstructObjectFromSubFields(field, allFields);
-      if (reconstructed !== undefined && reconstructed !== null) {
-        metadata[field.fieldId] = reconstructed;
-      }
-      continue;
-    }
-    
-    // Skip subfields (they're handled via parent reconstruction)
     if (field.parentFieldId) continue;
-    
-    if (field.value !== undefined && field.value !== null && field.value !== '') {
-      if (Array.isArray(field.value) && field.value.length === 0) {
-        continue;
-      }
-      metadata[field.fieldId] = field.value;
+    const value = recordValue(field, allFields, shapeExpander);
+    if (isValueFilled(value)) {
+      metadata[field.fieldId] = value;
     }
   }
 
@@ -68,39 +133,48 @@ export function exportMetadata(
 ): Record<string, any> {
   const allFields = [...state.coreFields, ...state.specialFields];
 
-  // Only keys of the record's own fields (W-L1): the map also holds fields of
-  // a type switched away from, dotted subfield ids of edits and keys of an
-  // import no field knows - they would end up in ccm:oeh_extendedData.
-  // `recordKeys` adds the fields of the schemas without a form field (ask_user false).
-  const ownKeys = new Set(recordKeys);
-  for (const field of allFields) {
-    if (!field.parentFieldId) ownKeys.add(field.fieldId);
-  }
+  const formFields = allFields.filter(field => !field.parentFieldId);
+  const shown = new Set(formFields.map(field => field.fieldId));
 
-  // Reconstruct complex objects from subfields
-  // Also strip internal meta-keys (_origins, _source_text) to prevent duplication
+  // The fields are the record (audit 14.11., W-31). The metadata map followed
+  // the form only loosely: after a type switch it kept the values of field ids
+  // both types have while the new fields were empty, and after a re-extraction
+  // it lacked what the answer did not repeat. It is read only for
+  // `recordKeys` that no field shows: schema fields without a form field
+  // (ask_user false) and keys of an import no field knows (W-L1) - never for
+  // the internal keys (_origins, _source_text).
+  //
+  // One rule for empty values (W-41): a field without a value is not in the
+  // record - neither as '', [] or {} nor as the agent's empty defaults. Only a
+  // field the editor emptied is there, as null, so the host learns that the
+  // value is gone (W-LOG-02).
   const exportMetadata: Record<string, any> = {};
   for (const [key, value] of Object.entries(state.metadata)) {
-    if (!key.startsWith('_') && ownKeys.has(key)) {
+    if (!key.startsWith('_') && recordKeys.has(key) && !shown.has(key) && isValueFilled(value)) {
       exportMetadata[key] = value;
     }
   }
-  for (const field of allFields) {
-    if (field.isParent && field.subFields) {
-      exportMetadata[field.fieldId] = shapeExpander.reconstructObjectFromSubFields(field, allFields);
+  for (const field of formFields) {
+    const value = recordValue(field, allFields, shapeExpander);
+    if (isValueFilled(value)) {
+      exportMetadata[field.fieldId] = value;
+    } else if (field.isAiGenerated === false) {
+      exportMetadata[field.fieldId] = null;
     }
   }
-  
+
+
   // Build origins map: track which fields were set by AI vs user
   const origins: Record<string, 'ai' | 'user'> = {};
   for (const field of allFields) {
     if (field.status === FieldStatus.FILLED) {
       origins[field.fieldId] = field.isAiGenerated ? 'ai' : 'user';
     }
-    // Also track subfield origins
+    // Also track subfield origins - of the inputs, not of the containers
+    // between them (`address`), which nobody fills as such (W-32).
     if (field.isParent && field.subFields) {
       for (const sf of field.subFields) {
-        if (sf.status === FieldStatus.FILLED) {
+        if (sf.status === FieldStatus.FILLED && !sf.isParent) {
           origins[sf.fieldId] = sf.isAiGenerated ? 'ai' : 'user';
         }
       }

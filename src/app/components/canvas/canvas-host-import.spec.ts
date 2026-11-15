@@ -17,6 +17,7 @@ import { CanvasService } from '../../core/canvas.service';
 import { SchemaService } from '../../core/schema.service';
 import { ShapeExpanderService } from '../../core/shape-expander.service';
 import { CanvasState } from '../../shared/models/canvas.models';
+import { turn } from '../../testing/canvas-harness';
 
 const EVENT_URI = 'http://w3id.org/openeduhub/vocabs/contentTypes/event';
 
@@ -58,7 +59,7 @@ function deferred<T>() {
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) {
-    await new Promise(resolve => setTimeout(resolve));
+    await turn();
   }
 }
 
@@ -98,7 +99,7 @@ describe('CanvasComponent: metadata-input and content-type from the host', () =>
       upload,
     };
     const quiet = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, group: () => {}, groupEnd: () => {} };
-    const schema = new SchemaService({} as any, quiet as any, i18n as any, api as any);
+    const schema = new SchemaService(quiet as any, i18n as any, api as any);
     canvas = new CanvasService(schema, api as any, i18n as any, quiet as any, new ShapeExpanderService(schema), { run: (fn: () => unknown) => fn() } as any);
     component = new CanvasComponent(
       canvas,
@@ -312,18 +313,78 @@ describe('CanvasComponent: metadata-input and content-type from the host', () =>
     });
   });
 
+  // Audit 13.11. (W-LOG-08): enable-screenshot, screenshot-method and
+  // preview-image live in the state only. A reset put a fresh state in its
+  // place, another instance-id a different one - the element kept its
+  // attributes, the widget had forgotten them.
+  describe('what the host set for screenshots and the preview image', () => {
+    const IMAGE = 'data:image/png;base64,HOST';
+
+    function hostSettings(): void {
+      component.enableScreenshot = 'false';
+      component.screenshotMethod = 'pageshot';
+      component.previewImage = IMAGE;
+    }
+    function settings(): unknown[] {
+      return [state().screenshotEnabled, state().screenshotMethod, state().previewImageUrl];
+    }
+
+    it('survives the reset the editor confirmed', async () => {
+      hostSettings();
+
+      const reset = component.reset();
+      component.onNoticeClosed(true);
+      await reset;
+
+      expect(settings()).toEqual([false, 'pageshot', IMAGE]);
+    });
+
+    it('survives a reset by the host (force-reset)', () => {
+      hostSettings();
+
+      component.forceReset = true;
+
+      expect(settings()).toEqual([false, 'pageshot', IMAGE]);
+    });
+
+    it('goes along to another instance-id, whatever the order of the attributes', () => {
+      hostSettings();
+
+      component.instanceId = `host-import-${++instanceCounter}`;
+
+      expect(settings()).toEqual([false, 'pageshot', IMAGE]);
+    });
+
+    it('is not overwritten by an element that joins the instance without settings of its own', () => {
+      hostSettings();
+      const joining = new CanvasComponent(
+        new CanvasService({} as any, {} as any, {} as any, { info: () => {} } as any, {} as any, {} as any),
+        {} as any, {} as any, {} as any, {} as any,
+        { markForCheck: () => undefined } as any,
+        { run: (fn: () => unknown) => fn() } as any,
+      );
+
+      joining.instanceId = `host-import-${instanceCounter}`;
+
+      expect(settings()).toEqual([false, 'pageshot', IMAGE]);
+      joining.ngOnDestroy();
+    });
+  });
+
   // Review 18.10. (W-L1 vs. 2.1.1): 2.1.1 returned every key of an imported
   // record in its events and upload. The events keep the import's keys again;
   // only the upload (ccm:oeh_extendedData) is limited to the form's schemas.
   describe('keys of an import that the form has no field for', () => {
     beforeEach(async () => {
+      jasmine.clock().install(); // the 50 ms debounce passes on this clock (audit 14.11., U-16)
       await component.ngOnInit();
     });
+    afterEach(() => jasmine.clock().uninstall());
 
     async function changeEvent(): Promise<Record<string, any>> {
       const emitted: Record<string, any>[] = [];
       component.metadataChange.subscribe(value => emitted.push(value));
-      await new Promise(resolve => setTimeout(resolve, 60)); // debounced 50 ms
+      jasmine.clock().tick(60); // debounced 50 ms
       return emitted[emitted.length - 1];
     }
 

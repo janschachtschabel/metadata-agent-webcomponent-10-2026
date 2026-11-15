@@ -1,7 +1,7 @@
 /** What the canvas tells the editor about agent calls: failure text, usability check, warnings. */
 import { GenerateResponse } from './api.service';
 import { I18nService } from './i18n.service';
-import { SchemaService } from './schema.service';
+import type { SchemaService } from './schema.service';
 
 /**
  * The cause of a failed generation call, as the agent words it.
@@ -24,13 +24,84 @@ export function failureCause(error: any, i18n: I18nService): string {
 }
 
 function causeOf(error: any, i18n: I18nService): string {
-  const body = error?.error;
+  // The body of a 200 that could not be parsed is the parser's complaint.
+  const body = isHttpFailure(error) && error.status < 300 ? null : error?.error;
   return (
-    body?.error?.message ||
-    (typeof body?.detail === 'string' ? body.detail : '') ||
-    error?.message ||
+    wordedByAgent(body) ||
+    unanswered(error, i18n) ||
+    // Never the message of an HTTP failure: Angular's names the address of
+    // the request (audit 14.11., W-40).
+    (isHttpFailure(error) ? '' : error?.message) ||
     translated(i18n, 'ALERTS.UNKNOWN_ERROR', undefined, 'Unknown error')
   );
+}
+
+/** The agent's own words for a failure; '' for a proxy's page or a 422 that lists fields. */
+function wordedByAgent(body: any): string {
+  const message = body?.error?.message;
+  if (typeof message === 'string' && message) return message;
+  return typeof body?.detail === 'string' ? body.detail : '';
+}
+
+/** A failed request, as HttpClient reports it (a status; 200 for a body that is no JSON). */
+function isHttpFailure(error: any): boolean {
+  return typeof error?.status === 'number';
+}
+
+/**
+ * A failure the agent did not word: no connection, a proxy's page for a 4xx
+ * or 5xx, the edu-sharing page instead of JSON, no answer in time. Angular's
+ * own message for these names the full address of the request - through
+ * edu-sharing the internal proxy path - and nothing the editor can act on
+ * (W-LOG-10; every status since the audit of 14.11., W-40).
+ * With English fallbacks - the translations come from the agent, too.
+ */
+function unanswered(error: any, i18n: I18nService): string {
+  // The widget's own limit (ApiService, W-50): rxjs reports it by name.
+  if (error?.name === 'TimeoutError') {
+    return translated(i18n, 'ALERTS.REQUEST_TIMEOUT', undefined,
+      'The metadata agent did not answer in time. Please try again.');
+  }
+  if (!isHttpFailure(error)) return '';
+  const status: number = error.status;
+  if (status === 0) {
+    return translated(i18n, 'ALERTS.NETWORK_UNREACHABLE', undefined,
+      'The metadata agent cannot be reached. Please check the network connection and try again.');
+  }
+  if (status >= 200 && status < 300) {
+    return translated(i18n, 'ALERTS.ANSWER_UNREADABLE', undefined,
+      'The answer is not a result of the metadata agent. Please check the address of the agent (api-url).');
+  }
+  if (status === 401 || status === 403) {
+    return translated(i18n, 'ALERTS.ACCESS_DENIED', { status },
+      `The request was refused (HTTP ${status}): not signed in, or not permitted to use the metadata agent.`);
+  }
+  if (status === 404) {
+    return translated(i18n, 'ALERTS.AGENT_NOT_FOUND', { status },
+      `The metadata agent was not found at its address (HTTP ${status}). Please check the address of the agent (api-url).`);
+  }
+  if (status === 413) {
+    return translated(i18n, 'ALERTS.REQUEST_TOO_LARGE', { status },
+      `The input is too large for the metadata agent (HTTP ${status}). Please shorten the text.`);
+  }
+  if (status === 422) {
+    return translated(i18n, 'ALERTS.REQUEST_INVALID', { status },
+      `The metadata agent refused the request as invalid (HTTP ${status}).`);
+  }
+  if (status === 429) {
+    return translated(i18n, 'ALERTS.TOO_MANY_REQUESTS', { status },
+      `Too many requests at the moment (HTTP ${status}). Please wait a moment and try again.`);
+  }
+  if (status === 504 || status === 408) {
+    return translated(i18n, 'ALERTS.SERVICE_TIMEOUT', { status },
+      `The request took too long and was cut off on its way to the metadata agent (HTTP ${status}). Please try again.`);
+  }
+  if (status >= 500) {
+    return translated(i18n, 'ALERTS.SERVICE_UNAVAILABLE', { status },
+      `The metadata agent does not answer at the moment (HTTP ${status}). Please try again later.`);
+  }
+  return translated(i18n, 'ALERTS.REQUEST_FAILED', { status },
+    `The request to the metadata agent failed (HTTP ${status}).`);
 }
 
 /**
@@ -57,7 +128,11 @@ export function uploadFailure(error: any, i18n: I18nService): string {
   const body = error?.error;
   const cause = body?.error?.code === 'UPLOAD_TIMEOUT'
     ? i18n.instant('ALERTS.UPLOAD_TIMEOUT')
-    : causeOf(error, i18n);
+    : error?.name === 'TimeoutError'
+      // The widget stopped waiting (W-50); what the agent did meanwhile is unknown.
+      ? translated(i18n, 'ALERTS.UPLOAD_NO_ANSWER', undefined,
+        'The upload did not answer in time. Whether the node was created is unknown – please check the repository before uploading again.')
+      : causeOf(error, i18n);
   const notes = [cause];
   if (body?.discarded_node) {
     notes.push(i18n.instant('ALERTS.UPLOAD_TIMEOUT_DISCARDED'));
@@ -94,9 +169,10 @@ export function assertUsable(response: GenerateResponse, i18n: I18nService): voi
 }
 
 /**
- * Say so when a result is usable but incomplete or uncertain: failed fields
- * or a content type that only the keyword fallback picked. Never silent -
- * a guessed type used to look exactly like a detected one.
+ * Say so when a result is usable but incomplete or uncertain: failed fields,
+ * a content type that only the keyword fallback picked, or a warning of the
+ * agent (`processing.warnings`). Never silent - a guessed type used to look
+ * exactly like a detected one.
  */
 export function generationWarning(
   response: GenerateResponse,
@@ -123,6 +199,12 @@ export function generationWarning(
         type: concept?.label || response.metadataset,
       })
     );
+  }
+  // What the agent itself warns about (text cut short, places without
+  // coordinates), in its words; as sentences, since the notes are joined.
+  for (const warning of processing?.warnings ?? []) {
+    const text = typeof warning === 'string' ? warning.trim() : '';
+    if (text) notes.push(/[.!?…]$/.test(text) ? text : `${text}.`);
   }
   return notes.length ? notes.join(' ') : null;
 }

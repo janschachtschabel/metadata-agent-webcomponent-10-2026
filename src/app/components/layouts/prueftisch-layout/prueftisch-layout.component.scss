@@ -11,21 +11,9 @@
   height: 100%;
 }
 
-// ===== EXTRACTION ERROR =====
-.extraction-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 16px;
-  padding: 10px 16px;
-  background: #fdecea;
-  border: 1px solid #f5c6cb;
-  border-radius: 8px;
-  color: #721c24;
-  font-size: 13px;
-  
-  mat-icon { color: var(--md-error, #ba1a1a); flex-shrink: 0; }
-  span { flex: 1; line-height: 1.4; }
+// The banners and the progress line are app-extraction-feedback's; here only their place.
+app-extraction-feedback {
+  --feedback-margin: 8px 16px;
 }
 
 .layout-container {
@@ -106,26 +94,28 @@
     margin: 0;
     border-radius: 11px 11px 0 0;
     
-    .group-icon {
+    // Inside app-group-header: its own view, hence ::ng-deep.
+    ::ng-deep .group-icon {
       font-size: 24px;
       width: 24px;
       height: 24px;
       color: shared.$text-secondary;
     }
-    
-    h3 {
-      margin: 0;
+
+    ::ng-deep h3 {
       font-size: 16px;
       font-weight: 600;
       color: shared.$text-primary;
       letter-spacing: 0.5px;
+      // Upper case is a matter of looks: as text, a screen reader may spell it out (U-N).
+      text-transform: uppercase;
+    }
+
+    ::ng-deep .collapse-icon {
+      color: shared.$text-secondary;
     }
   }
-  
-  .header-separator {
-    display: none;
-  }
-  
+
   .group-fields {
     
     &.columns-2 {
@@ -300,25 +290,4 @@
   }
 }
 
-// ===== FLOATING CONTROLS =====
-.floating-controls {
-  @include shared.floating-controls;
-  
-  .floating-content-type {
-    .split-button {
-      @include shared.split-button;
-    }
-  }
-  
-  .action-buttons {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-}
 
-// ===== EXTRACTION WARNING =====
-.extraction-warning {
-  @extend .extraction-error;
-  @include shared.extraction-warning-colors;
-}

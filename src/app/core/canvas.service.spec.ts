@@ -192,6 +192,8 @@ describe('CanvasService generation feedback', () => {
     const schema = {
       ...schemaStub(),
       getContextName: () => 'default',
+      getVersion: () => 'latest',
+      getSchemaVersion: () => 'vlatest',
       getContentTypeConcepts: () => [{ label: 'Veranstaltung', schema_file: 'event.json' }],
     };
     generate = jasmine.createSpy('generate');
@@ -460,7 +462,6 @@ describe('CanvasService generation feedback', () => {
         input_source: 'node_id',
         text: '',
         node_id: 'node-1',
-        repository: 'staging',
         normalize: true,
         existing_metadata: undefined,
         schema_file: undefined,

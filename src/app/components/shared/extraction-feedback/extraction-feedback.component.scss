@@ -1,0 +1,88 @@
+@use '../../layouts/shared-layout-styles' as shared;
+
+:host {
+  display: block;
+}
+
+%box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: var(--feedback-margin, 8px 16px);
+  padding: 10px 16px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 13px;
+
+  // A request id is one long word: the text may shrink and break anywhere (W-LOG-10).
+  span {
+    flex: 1;
+    line-height: 1.4;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  > mat-icon {
+    flex-shrink: 0;
+  }
+
+  button {
+    flex-shrink: 0;
+    color: inherit;
+  }
+}
+
+.extraction-error {
+  @extend %box;
+  background: #fdecea;
+  border-color: #f5c6cb;
+  color: #721c24;
+
+  > mat-icon {
+    color: var(--md-error, #ba1a1a);
+  }
+}
+
+// Amber: the result is usable but incomplete or uncertain, or something about
+// the record needs saying (another schema version).
+.extraction-warning {
+  @extend %box;
+  @include shared.extraction-warning-colors;
+}
+
+.extraction-progress {
+  @extend %box;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-top: 4px;
+  padding-bottom: 10px;
+  background: shared.$primary-light;
+  border-color: #c5d5f0;
+  color: shared.$text-primary;
+
+  .btn-cancel {
+    color: shared.$primary;
+  }
+
+  mat-progress-bar {
+    flex-basis: 100%;
+    @include shared.progress-bar;
+  }
+}
+
+:host(.compact) {
+  %box {
+    padding: 8px 12px;
+    font-size: 12px;
+
+    > mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  .extraction-progress {
+    padding-top: 2px;
+  }
+}

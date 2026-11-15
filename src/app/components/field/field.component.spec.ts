@@ -1,15 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ChangeDetectorRef } from '@angular/core';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { NoAnimationsModule } from '../../testing/no-animations';
 import { By } from '@angular/platform-browser';
-import { NgxMatTimepickerComponent } from 'ngx-mat-timepicker';
+import { MatTimepicker } from '@angular/material/timepicker';
 import { DateAdapter } from '@angular/material/core';
 
 import { FieldComponent } from './field.component';
 import { CanvasFieldState, FieldStatus } from '../../shared/models/canvas.models';
 import { seriousA11yViolations } from '../../testing/a11y';
 import { I18nService } from '../../core/i18n.service';
+import { commitPendingInputs } from '../../core/pending-inputs';
 
 /**
  * A vocabulary field opens its picker from the keyboard and gets the focus
@@ -57,7 +58,7 @@ describe('FieldComponent vocabulary picker by keyboard', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [FieldComponent, TranslateModule.forRoot(), NoopAnimationsModule],
+      imports: [FieldComponent, TranslateModule.forRoot(), NoAnimationsModule],
     }).compileComponents();
     fixture = TestBed.createComponent(FieldComponent);
     fixture.componentRef.setInput('field', FIELD);
@@ -109,7 +110,7 @@ describe('FieldComponent vocabulary picker by keyboard', () => {
 describe('FieldComponent chips', () => {
   it('names the remove button after the value it removes', async () => {
     await TestBed.configureTestingModule({
-      imports: [FieldComponent, TranslateModule.forRoot(), NoopAnimationsModule],
+      imports: [FieldComponent, TranslateModule.forRoot(), NoAnimationsModule],
     }).compileComponents();
     const translate = TestBed.inject(TranslateService);
     translate.setTranslation('de', { FIELD: { REMOVE_VALUE: '{{value}} entfernen', SELECTED_VALUES: 'Ausgewählte Werte' } });
@@ -161,7 +162,7 @@ function plainField(overrides: Partial<CanvasFieldState> = {}): CanvasFieldState
 
 async function renderField(field: CanvasFieldState, lang = 'de', inputs: Record<string, unknown> = {}) {
   await TestBed.configureTestingModule({
-    imports: [FieldComponent, TranslateModule.forRoot(), NoopAnimationsModule],
+    imports: [FieldComponent, TranslateModule.forRoot(), NoAnimationsModule],
   }).compileComponents();
   const translate = TestBed.inject(TranslateService);
   translate.setTranslation(lang, {
@@ -225,10 +226,10 @@ describe('FieldComponent errors and required state', () => {
 
 /**
  * The 2.1.1 end-to-end check: what the editor types is validated on leaving
- * the field, and a rejection reaches them as an alert outside Material's
+ * the field, and a rejection reaches them as a message outside Material's
  * subscript (which the layouts hide).
  */
-describe('FieldComponent validation from typing to alert', () => {
+describe('FieldComponent validation from typing to the error message', () => {
   afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
   async function typeAndLeave(field: CanvasFieldState, text: string) {
@@ -242,10 +243,10 @@ describe('FieldComponent validation from typing to alert', () => {
       input.dispatchEvent(new Event('blur'));
     });
     fixture.detectChanges();
-    return { alert: fixture.nativeElement.querySelector('[role="alert"]') as HTMLElement | null, emitted };
+    return { alert: fixture.nativeElement.querySelector('.support-text.error') as HTMLElement | null, emitted };
   }
 
-  it('shows a typed invalid number as an alert outside the Material subscript', async () => {
+  it('shows a typed invalid number as an error message outside the Material subscript', async () => {
     const { alert, emitted } = await typeAndLeave(plainField({ datatype: 'integer' }), '12.7');
 
     expect(alert?.textContent?.trim()).toBeTruthy();
@@ -253,7 +254,7 @@ describe('FieldComponent validation from typing to alert', () => {
     expect(emitted).toEqual([]);
   });
 
-  it('shows no alert for a typed valid number and emits it', async () => {
+  it('shows no error for a typed valid number and emits it', async () => {
     const { alert, emitted } = await typeAndLeave(plainField({ datatype: 'number' }), '42');
 
     expect(alert).toBeNull();
@@ -328,16 +329,17 @@ describe('FieldComponent dates and times', () => {
       expect(fixture.componentInstance.validationError).toBeFalsy();
     });
 
-    it('the clock dial still sets the time and returns the focus to the typed input', async () => {
+    it('the clock still sets the time and returns the focus to the typed input', async () => {
       const { fixture, input, emitted } = await typeTime('');
-      // Both pickers are always in the template: the date-time one first, then this one.
-      const pickers = fixture.debugElement.queryAll(By.directive(NgxMatTimepickerComponent));
-      expect(pickers.length).toBe(2);
-      const picker = pickers[1].componentInstance as NgxMatTimepickerComponent;
+      // One clock, for this field: a field without a time has none (audit 14.11., U-18).
+      const pickers = fixture.debugElement.queryAll(By.directive(MatTimepicker));
+      expect(pickers.length).toBe(1);
+      const picker = pickers[0].componentInstance as MatTimepicker<Date>;
+      const quarterPastTwo = new Date(2026, 4, 3, 14, 15);
 
-      expect(picker.inputElement).withContext('close() focuses it').toBeDefined();
-      picker.timeChanged.emit('14:15');
+      picker.selected.emit({ value: quarterPastTwo, source: picker });
       picker.closed.emit();
+      await fixture.whenStable();
 
       expect(emitted).toContain('14:15');
       expect(document.activeElement).toBe(input);
@@ -345,23 +347,27 @@ describe('FieldComponent dates and times', () => {
 
     // Follow-up review 18.10.: the pickers take their disabled state from the
     // input they are registered with - the hidden anchor, which was never
-    // disabled. The clock (and calendar) stayed usable in a read-only field.
+    // disabled. The clock (and calendar) stayed usable while the field was not.
     for (const datatype of ['time', 'datetime']) {
-      for (const [why, overrides, inputs] of [
-        ['read-only', {}, { readonly: true }],
-        ['extracting', { status: FieldStatus.EXTRACTING }, {}],
-      ] as [string, Partial<CanvasFieldState>, Record<string, unknown>][]) {
-        it(`a ${why} ${datatype} field offers no picker`, async () => {
-          const fixture = await renderField(plainField({ fieldId: 'schema:startTime', datatype, ...overrides }), 'de', inputs);
-          fixture.detectChanges();
-          const toggles = Array.from(fixture.nativeElement.querySelectorAll(
-            'ngx-mat-timepicker-toggle button, mat-datepicker-toggle button'
-          )) as HTMLButtonElement[];
+      const toggles = (root: HTMLElement) => Array.from(root.querySelectorAll(
+        'mat-timepicker-toggle button, mat-datepicker-toggle button'
+      )) as HTMLButtonElement[];
 
-          expect(toggles.length).toBeGreaterThan(0);
-          expect(toggles.map(b => b.disabled)).toEqual(toggles.map(() => true));
-        });
-      }
+      it(`an extracting ${datatype} field offers no picker`, async () => {
+        const fixture = await renderField(plainField({ fieldId: 'schema:startTime', datatype, status: FieldStatus.EXTRACTING }));
+        fixture.detectChanges();
+
+        expect(toggles(fixture.nativeElement).length).toBeGreaterThan(0);
+        expect(toggles(fixture.nativeElement).map(b => b.disabled)).toEqual(toggles(fixture.nativeElement).map(() => true));
+      });
+
+      // A read-only field is text (audit 14.11., U-02): no control, no picker.
+      it(`a read-only ${datatype} field has no picker at all`, async () => {
+        const fixture = await renderField(plainField({ fieldId: 'schema:startTime', datatype }), 'de', { readonly: true });
+        fixture.detectChanges();
+
+        expect(toggles(fixture.nativeElement)).toEqual([]);
+      });
     }
 
     for (const text of ['930?', 'abc']) {
@@ -551,7 +557,9 @@ describe('FieldComponent leaving a field without a change', () => {
       c => { c.inputValue = '04.05.2026 10:00'; c.onDateTimeBlur(); },
     );
 
-    expect(emitted).toEqual(['2026-05-04T10:00']);
+    // With the seconds and the offset the value had (audit 14.11., W-47);
+    // this used to pin '2026-05-04T10:00'.
+    expect(emitted).toEqual(['2026-05-04T10:00:00+02:00']);
   });
 
   it('still emits an emptied date-time', async () => {
@@ -622,10 +630,17 @@ describe('FieldComponent multi-valued special datatypes', () => {
     return emitted;
   }
 
-  it('shows the values as chips, also read-only', async () => {
+  it('shows the values as chips', async () => {
     expect(chips(await renderField(URLS))).toEqual(['https://a.example', 'https://b.example']);
-    TestBed.resetTestingModule();
-    expect(chips(await renderField(URLS, 'de', { readonly: true }))).toEqual(['https://a.example', 'https://b.example']);
+  });
+
+  // Audit 14.11. (U-02): read-only, each address is a link in a list.
+  it('shows the values as links when read-only', async () => {
+    const fixture = await renderField(URLS, 'de', { readonly: true });
+    const links = Array.from(fixture.nativeElement.querySelectorAll('.readonly-list li a')) as HTMLAnchorElement[];
+
+    expect(links.map(a => a.getAttribute('href'))).toEqual(['https://a.example', 'https://b.example']);
+    expect(links.map(a => a.getAttribute('rel'))).toEqual(['noopener noreferrer', 'noopener noreferrer']);
   });
 
   it('checks a new item as an address', async () => {
@@ -670,21 +685,261 @@ describe('FieldComponent multi-valued special datatypes', () => {
   });
 });
 
-/** Audit U-16: a value typed into a field that is then destroyed is not emitted later. */
-describe('FieldComponent timers', () => {
+/**
+ * Audit 13.11. (W-LOG-01): every typed value waited 200 ms after the field was
+ * left - for a click on an autocomplete option that most fields do not have.
+ * Now only a field whose autocomplete panel is open waits, and whoever reads
+ * the form at once takes the waiting value in first (pending-inputs.ts).
+ */
+describe('FieldComponent leaving a field after typing', () => {
   afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
 
-  it('drops a pending blur check when the field goes away', async () => {
+  const LEVEL = plainField({
+    fieldId: 'ccm:level', label: 'Niveau',
+    vocabulary: {
+      type: 'open',
+      concepts: [
+        { uri: 'http://w3id.org/level/1', label: 'Einstieg' },
+        { uri: 'http://w3id.org/level/2', label: 'Fortgeschritten' },
+      ],
+    },
+  } as Partial<CanvasFieldState>);
+
+  async function typing(field: CanvasFieldState, text: string, openPanel = false) {
+    const fixture = await renderField(field);
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => {
+      emitted.push(v);
+      // The canvas answers the emit with a new field state, as in the widget.
+      fixture.componentRef.setInput('field', { ...field, status: FieldStatus.FILLED, value: v });
+    });
+    const input = fixture.nativeElement.querySelector('textarea[matInput], input[matInput]') as HTMLTextAreaElement;
+    if (openPanel) {
+      fixture.componentInstance.autocompleteTrigger!.openPanel();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(fixture.componentInstance.autocompleteTrigger!.panelOpen).withContext('panel open').toBeTrue();
+    }
+    input.value = text;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return { fixture, input, emitted };
+  }
+
+  it('takes the typed value at once, without a delay', async () => {
+    const { input, emitted } = await typing(plainField(), 'Bruchrechnung');
+
+    input.dispatchEvent(new FocusEvent('blur'));
+
+    expect(emitted).toEqual(['Bruchrechnung']);
+  });
+
+  it('waits while its autocomplete panel is open, and hands the value over when the form is read', async () => {
+    const { input, emitted } = await typing(LEVEL, 'Mittel', true);
+    jasmine.clock().install();
+    try {
+
+      input.dispatchEvent(new FocusEvent('blur'));
+      expect(emitted).withContext('an option may still be clicked').toEqual([]);
+
+      commitPendingInputs();
+      expect(emitted).toEqual(['Mittel']);
+
+      jasmine.clock().tick(250);
+      expect(emitted).withContext('the delay does not emit again').toEqual(['Mittel']);
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('a click on an autocomplete option still wins over the typed fragment', async () => {
+    const { fixture, input, emitted } = await typing(LEVEL, 'Fort', true);
+    jasmine.clock().install();
+    try {
+      fixture.detectChanges();
+      const option = Array.from(document.querySelectorAll('mat-option'))
+        .find(o => o.textContent!.trim() === 'Fortgeschritten') as HTMLElement;
+
+      input.dispatchEvent(new FocusEvent('blur')); // mousedown on the option
+      option.click();
+      jasmine.clock().tick(250);
+
+      expect(emitted).toEqual(['http://w3id.org/level/2']);
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  // Audit U-16: a value typed into a field that is then destroyed is not emitted later.
+  it('drops a waiting value when the field goes away', async () => {
+    const { fixture, input, emitted } = await typing(LEVEL, 'Mittel', true);
+    jasmine.clock().install();
+    try {
+
+      input.dispatchEvent(new FocusEvent('blur'));
+      fixture.destroy();
+      commitPendingInputs();
+      jasmine.clock().tick(250);
+
+      expect(emitted).toEqual([]);
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+});
+
+/**
+ * Audit 13.11. (W-LOG-02): emptying a single-value field reported nothing -
+ * the blur handler only looked at non-empty text, and the date field had no
+ * branch for "no date". A wrong AI description, deleted and saved, stayed in
+ * the record.
+ */
+describe('FieldComponent emptying a field', () => {
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
+
+  async function emptied(field: CanvasFieldState) {
+    const fixture = await renderField(field);
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+    const input = fixture.nativeElement.querySelector('textarea[matInput], input[matInput]') as HTMLInputElement;
+    expect(input.value).withContext('shows the value first').not.toBe('');
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('blur'));
+    return { fixture, emitted };
+  }
+
+  const FILLED: [string, Partial<CanvasFieldState>][] = [
+    ['text', { datatype: 'string', value: 'Bruchrechnung' }],
+    ['number', { datatype: 'number', value: 42 }],
+    ['integer', { datatype: 'integer', value: 7 }],
+    ['URL', { datatype: 'url', value: 'https://example.org/kurs' }],
+    ['duration', { datatype: 'duration', value: 'PT2H' }],
+    ['JSON', { datatype: 'json', value: '{"a": 1}' }],
+    ['date', { datatype: 'date', value: '2026-05-03' }],
+    ['date-time', { datatype: 'datetime', value: '2026-05-03T14:30' }],
+    ['time', { datatype: 'time', value: '14:30' }],
+  ];
+
+  for (const [name, overrides] of FILLED) {
+    it(`reports an emptied ${name} field as null`, async () => {
+      const { emitted } = await emptied(plainField({ status: FieldStatus.FILLED, ...overrides }));
+
+      expect(emitted).toEqual([null]);
+    });
+  }
+
+  it('reports nothing when an empty field is left empty', async () => {
     const fixture = await renderField(plainField());
     const emitted: unknown[] = [];
     fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
-    fixture.componentInstance.inputValue = 'Bruchrechnung';
 
-    passingBlurDelay(() => {
-      fixture.componentInstance.onBlur();
-      fixture.destroy();
-    });
+    (fixture.nativeElement.querySelector('textarea') as HTMLElement).dispatchEvent(new FocusEvent('blur'));
 
     expect(emitted).toEqual([]);
+  });
+
+  // The input of a list is only the draft of its next chip.
+  it('keeps the list of a multi-value field whose input is left empty', async () => {
+    const fixture = await renderField(plainField({
+      fieldId: 'cclom:general_keyword', datatype: 'array', multiple: true,
+      status: FieldStatus.FILLED, value: ['Musik', 'Konzert'],
+    }));
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+    const input = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+
+    input.value = 'Kla';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('blur'));
+
+    expect(emitted).toEqual([]);
+  });
+
+  // A list the agent put into a single-value field is not shown in its input;
+  // leaving that input is no decision to delete the list.
+  it('keeps a value the input never showed', async () => {
+    const fixture = await renderField(plainField({ status: FieldStatus.FILLED, value: ['Musik', 'Konzert'] }));
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+
+    (fixture.nativeElement.querySelector('textarea') as HTMLElement).dispatchEvent(new FocusEvent('blur'));
+
+    expect(emitted).toEqual([]);
+  });
+
+  it('reports a date it cannot read instead of emptying the field', async () => {
+    const fixture = await renderField(plainField({ datatype: 'date', status: FieldStatus.FILLED, value: '2026-05-03' }));
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+    const input = fixture.nativeElement.querySelector('input[matInput]') as HTMLInputElement;
+
+    input.value = '31.02.2026';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(emitted).toEqual([]);
+    expect(fixture.componentInstance.validationError).toBe('VALIDATION.INVALID_DATE');
+  });
+});
+
+/**
+ * Audit 13.11. (W-LOG-07): the options of a boolean field were the texts
+ * 'true'/'false', the agent answers with real booleans. After an extraction
+ * neither option was selected, and a click stored text.
+ */
+describe('FieldComponent boolean fields', () => {
+  afterEach(() => localStorage.removeItem('metadata-agent-canvas.language'));
+
+  const ACCESSIBLE = { fieldId: 'schema:isAccessibleForFree', label: 'Kostenlos', datatype: 'boolean' };
+
+  async function radios(value: unknown) {
+    const fixture = await renderField(plainField({
+      ...ACCESSIBLE, value, status: value === null ? FieldStatus.EMPTY : FieldStatus.FILLED,
+    }));
+    const emitted: unknown[] = [];
+    fixture.componentInstance.valueChange.subscribe(v => emitted.push(v));
+    const inputs = Array.from(fixture.nativeElement.querySelectorAll('input[type="radio"]')) as HTMLInputElement[];
+    // In template order: no selection, yes, no.
+    return { fixture, emitted, none: inputs[0], yes: inputs[1], no: inputs[2] };
+  }
+
+  it('selects "yes" for the value true', async () => {
+    const { none, yes, no } = await radios(true);
+
+    expect([none.checked, yes.checked, no.checked]).toEqual([false, true, false]);
+  });
+
+  it('selects "no" for the value false', async () => {
+    const { none, yes, no } = await radios(false);
+
+    expect([none.checked, yes.checked, no.checked]).toEqual([false, false, true]);
+  });
+
+  for (const [text, expected] of [['true', [false, true, false]], ['false', [false, false, true]], ['Ja', [false, true, false]]] as [string, boolean[]][]) {
+    it(`selects the option of a value stored as the text "${text}"`, async () => {
+      const { none, yes, no } = await radios(text);
+
+      expect([none.checked, yes.checked, no.checked]).toEqual(expected);
+    });
+  }
+
+  it('reports a click as a boolean, not as text', async () => {
+    const { emitted, yes, no } = await radios(null);
+
+    yes.click();
+    no.click();
+
+    expect(emitted).toEqual([true, false]);
+  });
+
+  it('reports "no selection" as null', async () => {
+    const { emitted, none } = await radios(true);
+
+    none.click();
+
+    expect(emitted).toEqual([null]);
   });
 });

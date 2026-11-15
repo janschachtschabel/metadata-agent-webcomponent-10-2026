@@ -1,7 +1,9 @@
-import { Directive, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
+import { Directive, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 
 import { CanvasFieldState, CanvasState, FieldGroup, FieldStatus } from '../../shared/models/canvas.models';
+import { uniqueId } from '../../shared/unique-id';
+import { ObjectEntryChange, ObjectEntryControls } from '../field/field.component';
 
 /**
  * What the seven layouts share: which groups are shown, which fields of a group
@@ -18,6 +20,21 @@ export abstract class LayoutBase implements OnChanges {
   @Input() showSpecialFields = true;
   @Input() readonly = false;
   @Input() flatGroups = false;
+  /**
+   * Groups can be collapsed from their header (preset key `groupCollapse`).
+   * A layout whose preset says so overrides the default, like `readonly`.
+   */
+  @Input() groupCollapse = false;
+
+  /** Prefix of the ids aria-controls points at; unique per instance. */
+  readonly _uid = uniqueId('layout');
+
+  // What app-extraction-feedback reports, the same in every layout (audit 14.11., U-03, U-12).
+  @Output() cancelExtraction = new EventEmitter<void>();
+  @Output() dismissError = new EventEmitter<void>();
+  @Output() dismissWarning = new EventEmitter<void>();
+  /** A button of an object list: add an entry, or remove one (W-42). */
+  @Output() objectEntryChange = new EventEmitter<ObjectEntryChange>();
 
   // Cached computed values (recomputed in ngOnChanges, not every CD cycle)
   _displayGroups: FieldGroup[] = [];
@@ -25,6 +42,8 @@ export abstract class LayoutBase implements OnChanges {
   _visibleFieldsMap = new Map<string, CanvasFieldState[]>();
   _filledCountMap = new Map<string, number>();
   _flatCountMap = new Map<string, number>();
+  /** By the id of an entry's last input: the entry's buttons (W-42). */
+  _entryControls = new Map<string, ObjectEntryControls>();
 
   private readonly translate = inject(TranslateService);
 
@@ -103,11 +122,37 @@ export abstract class LayoutBase implements OnChanges {
     }];
   }
 
+  /**
+   * The entries of the object lists among `fields`: each ends with its last
+   * input, where its buttons go. Containers (an address) are no inputs.
+   */
+  private collectEntryControls(fields: CanvasFieldState[]): void {
+    for (const parent of fields) {
+      if (!parent.isParent || !parent.multiple || !parent.subFields?.length) continue;
+      const inputs = parent.subFields.filter(sub => !sub.isParent);
+      const count = Math.max(...inputs.map(sub => sub.arrayIndex ?? 0)) + 1;
+      for (let index = 0; index < count; index++) {
+        const ofEntry = inputs.filter(sub => (sub.arrayIndex ?? 0) === index);
+        const last = ofEntry[ofEntry.length - 1];
+        if (!last) continue;
+        this._entryControls.set(last.fieldId, {
+          parentId: parent.fieldId,
+          parentLabel: parent.label,
+          index,
+          last: index === count - 1,
+          removable: count > 1 || ofEntry.some(sub => sub.status === FieldStatus.FILLED),
+        });
+      }
+    }
+  }
+
   private precomputeGroupData(): void {
     this._visibleFieldsMap.clear();
     this._filledCountMap.clear();
     this._flatCountMap.clear();
+    this._entryControls.clear();
     for (const group of this._displayGroups) {
+      this.collectEntryControls(group.fields);
       const visible = this.getVisibleFields(group.fields);
       this._visibleFieldsMap.set(group.id, visible);
       const flat = this.getFlattenedFields(group.fields);

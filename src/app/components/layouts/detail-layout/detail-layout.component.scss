@@ -31,6 +31,8 @@
   flex: 1;
   width: 100%;
   padding: 0 15px 16px;
+  // Width plus padding stays inside the widget, whatever the host page sets (U-02).
+  box-sizing: border-box;
 
   &.group-columns-4 {
     @include shared.responsive-columns(4, 24px);
@@ -61,6 +63,16 @@
     font-weight: 500;
     height: auto;
     margin: 30px 0 0;
+
+    // Inside app-group-header: its own view, hence ::ng-deep. The heading
+    // takes the caption's type (it was the caption itself, as an <h2>).
+    ::ng-deep h3 {
+      font: inherit;
+    }
+
+    ::ng-deep .group-icon {
+      display: none;
+    }
   }
 
   // Fields stacked vertically within each group column
@@ -280,6 +292,45 @@
     cursor: default;
   }
 
+  // ===== READ-ONLY (this layout's own state): caption and value as text (U-02) =====
+  .readonly-field {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+  }
+
+  .readonly-label {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 16px;
+    font-style: italic;
+    font-weight: 500;
+    color: #6f6f6f;
+    margin: 15px 0 2px 0;
+  }
+
+  .readonly-value {
+    font-family: 'Montserrat', 'open_sansregular', sans-serif;
+    font-size: 16px;
+    color: #1d1b20;
+  }
+
+  // edu-sharing .mdsWidgetMultivalue pills
+  .readonly-list {
+    gap: 8px;
+    padding: 2px 0 2px 4px;
+
+    li {
+      padding: 5px 12px;
+      border-radius: 16px;
+      background: #F4F4F4;
+      color: #383838;
+      font-size: 16px;
+      font-weight: 400;
+      line-height: 1.4;
+    }
+  }
+
   // ===== SUPPORT TEXT → hide =====
   .support-text {
     display: none !important;
@@ -313,17 +364,6 @@
   }
 }
 
-// ===== FLOATING CONTROLS =====
-.floating-controls {
-  @include shared.floating-controls;
-
-  .floating-content-type {
-    .split-button {
-      @include shared.split-button;
-    }
-  }
-}
-
 // ===== EMPTY STATE =====
 .empty-state {
   display: flex;
@@ -349,24 +389,8 @@
   }
 }
 
-// Same banners as the other layouts — this one used to show no error at all.
-.extraction-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 16px;
-  padding: 10px 16px;
-  background: #fdecea;
-  border: 1px solid #f5c6cb;
-  border-radius: 8px;
-  color: #721c24;
-  font-size: 13px;
-
-  mat-icon { color: var(--md-error, #ba1a1a); flex-shrink: 0; }
-  span { flex: 1; line-height: 1.4; }
+// The banners and the progress line are app-extraction-feedback's; here only their place.
+app-extraction-feedback {
+  --feedback-margin: 8px 16px;
 }
 
-.extraction-warning {
-  @extend .extraction-error;
-  @include shared.extraction-warning-colors;
-}

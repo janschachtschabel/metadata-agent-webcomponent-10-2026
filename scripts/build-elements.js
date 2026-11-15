@@ -8,21 +8,37 @@
  * This reproduces exactly the layout that is deployed today.
  *
  * What it does, after `ng build`:
- *   (the four bundles are written under .tmp names and renamed together at the end)
+ *   (the four bundles, the texts and build.json are written under .tmp names
+ *   and renamed together at the end)
  *   dist/main.<hash>.js       ->  <target>/dist/main.js       + main.js.gz
  *   dist/polyfills.<hash>.js  ->  <target>/dist/polyfills.js  + .gz
  *   dist/runtime.<hash>.js    ->  <target>/dist/runtime.js    + .gz
  *   dist/styles.<hash>.css    ->  <target>/dist/styles.css    + .gz
  *   dist/assets/i18n/*.json   ->  <target>/assets/i18n/
+ *   (stamp of this delivery)  ->  <target>/dist/build.json
  *   dist/fonts/<each font styles.css loads>  ->  <target>/dist/fonts/   (written first)
  *   @fontsource/roboto LICENSE, material-icons LICENSE
  *                             ->  <target>/dist/fonts/OFL.txt, LICENSE-material-icons.txt
  *   dist/3rdpartylicenses.txt, LICENSE, NOTICE  ->  <target>/dist/   (licence texts)
  *
- * Before anything is written it refuses a build that still references an
- * external font CDN, a Vercel host or the PageShot API, that lacks a bundle,
- * a font or a licence text, and a target agent of another major version
- * (its pyproject.toml, three levels above src/static/widget) unless --force.
+ * Before anything is written it refuses a build
+ *   - with a JavaScript file in dist/ that is none of the bundles above, or
+ *     with two candidates for one of them: a lazy chunk a later change adds
+ *     would be left behind and fail in the browser only (audit 14.11., U-17);
+ *   - that names a host outside ALLOWED_HOSTS in a bundle (no font CDN, no
+ *     screenshot service, nothing loaded from elsewhere);
+ *   - without de.json / en.json in dist/assets/i18n, or whose main bundle does
+ *     not contain their texts. The widget shows the built-in texts and merges
+ *     the agent's /widget/i18n/<lang>.json over them - the agent's file wins,
+ *     so the two travel together;
+ *   - that lacks a bundle, a font or a licence text;
+ * and a target agent of another major version (its pyproject.toml, three
+ * levels above src/static/widget) unless --force.
+ *
+ * build.json says what was delivered: widget version (package.json), time, a
+ * SHA-256 per file and one over all of them (`hash`). The agent's CI recomputes
+ * it from the files in its repository - a bundle changed by hand, copied in
+ * part or left over from another build does not match (see .gitlab-ci.yml).
  *
  * The hashes have to go: `src/main.py` mounts the directory and the demo pages
  * reference `/widget/dist/main.js` by that fixed name. The `.gz` twins are what
@@ -43,6 +59,7 @@
  * and lists which bundles are from the new build and which from the old one.
  */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -129,22 +146,96 @@ if (!isAgentWidgetDir) {
 const distFiles = fs.readdirSync(DIST);
 const targetDist = path.join(TARGET, 'dist');
 
-const FORBIDDEN_HOSTS = [/fonts\.googleapis\.com/i, /fonts\.gstatic\.com/i, /vercel\.app/i, /pageshot\.site/i];
-for (const file of distFiles.filter((f) => /\.(js|css)$/.test(f))) {
-  const content = fs.readFileSync(path.join(DIST, file), 'utf8');
-  const hit = FORBIDDEN_HOSTS.find((re) => re.test(content));
-  if (hit) {
-    fail(`dist/${file} references ${hit} — external hosts must not be shipped`);
-  }
+/** Every file below `dir`, as paths relative to it with forward slashes. */
+function filesBelow(dir, prefix = '') {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = prefix + entry.name;
+    return entry.isDirectory() ? filesBelow(path.join(dir, entry.name), `${relativePath}/`) : [relativePath];
+  });
 }
 
 const sources = BUNDLES.map((bundle) => {
-  const source = distFiles.find((f) => bundle.pattern.test(f));
-  if (!source) {
+  const candidates = distFiles.filter((f) => bundle.pattern.test(f));
+  if (!candidates.length) {
     fail(`no build output matching ${bundle.pattern} — did the build succeed?`);
   }
-  return { ...bundle, source };
+  if (candidates.length > 1) {
+    fail(`dist/ holds ${candidates.length} files for ${bundle.name} (${candidates.join(', ')}) — ` +
+      'leftovers of another build; delete dist/ and build again');
+  }
+  return { ...bundle, source: candidates[0] };
 });
+
+// Only what is deployed may be JavaScript in dist/: a chunk the build adds
+// one day (a lazy import) is loaded by main.js under its hashed name, which
+// this script would neither copy nor rename (audit 14.11., U-17).
+const deployedScripts = new Set(sources.map((bundle) => bundle.source));
+const strayScripts = filesBelow(DIST).filter((f) => /\.m?js$/.test(f) && !deployedScripts.has(f));
+if (strayScripts.length) {
+  fail(`dist/ holds JavaScript this script does not deploy: ${strayScripts.join(', ')}\n` +
+    '  a lazy chunk? Add it to BUNDLES (and to the pages that load the widget), or delete dist/ and build again');
+}
+
+// Hosts a bundle may name. An allow-list: a deny-list only knows the hosts
+// that were a problem before (audit 14.11., U-17). None of these is requested
+// by the widget - they are names and links inside the code.
+const ALLOWED_HOSTS = [
+  'www.w3.org',   // XML namespaces (SVG, XHTML, XLink, MathML)
+  'angular.dev',  // links in Angular's error messages
+  'example.com',  // placeholder of the URL input
+];
+const URL_IN_CODE = /(?:https?:)?\/\/((?:[a-z0-9-]+\.)+[a-z]{2,}|localhost|\d{1,3}(?:\.\d{1,3}){3})(?![a-z0-9.-])/gi;
+for (const file of distFiles.filter((f) => /\.(js|css)$/.test(f))) {
+  const content = fs.readFileSync(path.join(DIST, file), 'utf8');
+  const foreign = new Set();
+  for (const match of content.matchAll(URL_IN_CODE)) {
+    // "//name.ext" without a scheme is a URL only where one can stand: after a
+    // quote, "(" or "=". Elsewhere it is code (`/[\\/]/i.test(...)`).
+    const schemeless = !/^https?:/i.test(match[0]);
+    if (schemeless && !/["'`(=]\s*$/.test(content.slice(Math.max(0, match.index - 3), match.index))) continue;
+    const host = match[1].toLowerCase();
+    if (!ALLOWED_HOSTS.includes(host)) foreign.add(host);
+  }
+  if (foreign.size) {
+    fail(`dist/${file} names ${[...foreign].join(', ')} — only ${ALLOWED_HOSTS.join(', ')} may appear in a bundle.\n` +
+      '  Nothing may be loaded from another host; a name that is only text goes on ALLOWED_HOSTS with its reason');
+  }
+}
+
+// The texts: built into main.js, and delivered as files for the agent's
+// /widget/i18n/<lang>.json, which the widget merges over the built-in ones.
+// Both from the same build - the agent's file wins, and an older one would
+// bring back the texts of the previous release.
+const I18N_SOURCE = path.join(DIST, 'assets', 'i18n');
+const REQUIRED_LANGUAGES = ['de', 'en']; // WIDGET_LANGUAGES of the agent's widget router
+const missingTexts = REQUIRED_LANGUAGES.filter((lang) => !fs.existsSync(path.join(I18N_SOURCE, `${lang}.json`)));
+if (missingTexts.length) {
+  fail(`missing in dist/assets/i18n: ${missingTexts.map((lang) => `${lang}.json`).join(', ')} — the agent serves them at /widget/i18n/`);
+}
+const I18N_FILES = fs.readdirSync(I18N_SOURCE).filter((f) => f.endsWith('.json')).sort();
+
+/** The texts of a translation file (the values of its leaves). */
+function texts(tree) {
+  return Object.values(tree).flatMap((value) => (value && typeof value === 'object' ? texts(value) : [String(value)]));
+}
+const mainBundle = fs.readFileSync(path.join(DIST, sources.find((b) => b.name === 'main.js').source), 'utf8');
+for (const lang of REQUIRED_LANGUAGES) {
+  // Compared are the texts a minifier leaves as written: printable ASCII
+  // without quotes and backslashes (umlauts may be escaped in the bundle).
+  let tree;
+  try {
+    tree = JSON.parse(fs.readFileSync(path.join(I18N_SOURCE, `${lang}.json`), 'utf8'));
+  } catch (err) {
+    fail(`dist/assets/i18n/${lang}.json is not JSON (${err.message}) — the agent would answer /widget/i18n/${lang}.json with an error`);
+  }
+  const plain = texts(tree)
+    .filter((text) => text.length >= 8 && /^[\x20-\x7e]+$/.test(text) && !/["'`\\]/.test(text));
+  const absent = plain.filter((text) => !mainBundle.includes(text));
+  if (!plain.length || absent.length) {
+    fail(`main.js does not contain the texts of ${lang}.json (${absent.length} of ${plain.length} compared are missing, ` +
+      `e.g. "${absent[0] || ''}") — dist/ is not a build of these sources; build again`);
+  }
+}
 
 // The fonts are exactly what the built stylesheet loads — url(fonts/<file>) —
 // so this list cannot drift from src/styles/main.scss or angular.json.
@@ -183,24 +274,40 @@ if (missingLicences.length) {
 }
 
 let written = 0;
+const relative = (file) => path.relative(TARGET, file).split(path.sep).join('/');
+const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
+/** SHA-256 of every delivered file, by its path below the target (for build.json). */
+const delivered = {};
 
-// Fonts first, overwritten in place: deleting a file a running server holds
-// open fails on Windows (EBUSY), and failing here leaves the deployed bundles
-// as they were. Fonts the new stylesheet no longer loads are removed only once
-// it is written — until then the deployed one may still need them.
+/** Writes a file in place and notes it for build.json. */
+function writeInPlace(from, to) {
+  const data = fs.readFileSync(from);
+  fs.writeFileSync(to, data);
+  delivered[relative(to)] = sha256(data);
+  written += 1;
+  console.log(`  ${relative(to)}`);
+}
+
+// Fonts and licence texts first, overwritten in place: deleting a file a
+// running server holds open fails on Windows (EBUSY), and failing here leaves
+// the deployed bundles as they were. Fonts the new stylesheet no longer loads
+// are removed only once it is written — until then the deployed one may still
+// need them.
 const targetFonts = path.join(targetDist, 'fonts');
 fs.mkdirSync(targetFonts, { recursive: true });
 for (const file of FONTS) {
-  fs.copyFileSync(path.join(FONT_DIR, file), path.join(targetFonts, file));
-  written += 1;
-  console.log(`  dist/fonts/${file}`);
+  writeInPlace(path.join(FONT_DIR, file), path.join(targetFonts, file));
+}
+for (const [from, to] of LICENCES) {
+  writeInPlace(from, to);
 }
 
-// The bundles go to temporary names first and are renamed only once all of
-// them are written: the directory is served, and a page loading meanwhile got
-// a new main.js with the old runtime.js (they must come from one build).
+// The bundles, the texts and build.json go to temporary names first and are
+// renamed only once all of them are written: the directory is served, and a
+// page loading meanwhile got a new main.js with the old runtime.js (they must
+// come from one build) - or new bundles with the texts of the old ones, which
+// the agent's file overrides (audit 14.11., U-17).
 const staged = [];
-const relative = (file) => path.relative(TARGET, file).split(path.sep).join('/');
 
 /** Removes the .tmp files that are left; one that cannot go is named. */
 function removeStaged() {
@@ -213,24 +320,41 @@ function removeStaged() {
   }
 }
 
+function stage(final, data) {
+  staged.push(final); // before the write: a half-written .tmp is removed as well
+  fs.writeFileSync(`${final}.tmp`, data);
+  delivered[relative(final)] = sha256(data);
+}
+
+const i18nTarget = path.join(TARGET, 'assets', 'i18n');
+const buildStamp = path.join(targetDist, 'build.json');
 try {
   for (const bundle of sources) {
-    const source = bundle.source;
-    const content = fs.readFileSync(path.join(DIST, source));
-    for (const [name, data] of [
-      [bundle.name, content],
-      [`${bundle.name}.gz`, zlib.gzipSync(content, { level: zlib.constants.Z_BEST_COMPRESSION })],
-    ]) {
-      const final = path.join(targetDist, name);
-      staged.push(final); // before the write: a half-written .tmp is removed as well
-      fs.writeFileSync(`${final}.tmp`, data);
-    }
+    const content = fs.readFileSync(path.join(DIST, bundle.source));
+    stage(path.join(targetDist, bundle.name), content);
+    stage(path.join(targetDist, `${bundle.name}.gz`), zlib.gzipSync(content, { level: zlib.constants.Z_BEST_COMPRESSION }));
     const kb = (content.length / 1024).toFixed(0);
-    console.log(`  ${source}  ->  dist/${bundle.name}  (${kb} kB, + .gz)`);
+    console.log(`  ${bundle.source}  ->  dist/${bundle.name}  (${kb} kB, + .gz)`);
   }
+  fs.mkdirSync(i18nTarget, { recursive: true });
+  for (const file of I18N_FILES) {
+    stage(path.join(i18nTarget, file), fs.readFileSync(path.join(I18N_SOURCE, file)));
+    console.log(`  assets/i18n/${file}`);
+  }
+
+  // The stamp, last: everything above is in `delivered`. `hash` is the SHA-256
+  // of the lines "<sha256>  <path>\n" in the order of the paths (the format of
+  // sha256sum), so it can be recomputed from the delivered files alone.
+  const files = Object.fromEntries(Object.entries(delivered).sort(([a], [b]) => (a < b ? -1 : 1)));
+  const hash = sha256(Object.entries(files).map(([file, sum]) => `${sum}  ${file}\n`).join(''));
+  const builtAt = fs.statSync(path.join(DIST, sources.find((b) => b.name === 'main.js').source)).mtime.toISOString();
+  const stamp = { name: 'metadata-agent-canvas', version: widgetVersion, builtAt, hash, files };
+  staged.push(buildStamp);
+  fs.writeFileSync(`${buildStamp}.tmp`, `${JSON.stringify(stamp, null, 2)}\n`);
+  console.log(`  dist/build.json  (widget ${widgetVersion}, built ${builtAt}, hash ${hash.slice(0, 12)}…)`);
 } catch (err) {
   removeStaged();
-  fail(`writing the new bundles failed (${err.code || err.message}) — nothing replaced, the deployed bundles are unchanged`);
+  fail(`writing the new bundles failed (${err.code || err.message}) — nothing replaced, the deployed bundles and texts are unchanged`);
 }
 
 const replaced = [];
@@ -238,7 +362,7 @@ for (const final of staged) {
   try {
     try {
       fs.renameSync(`${final}.tmp`, final);
-    } catch (err) {
+    } catch {
       // Windows refuses to replace a file the server holds open (EPERM/EBUSY):
       // copy over it instead, as before.
       fs.copyFileSync(`${final}.tmp`, final);
@@ -268,23 +392,6 @@ for (const stale of fs.readdirSync(targetFonts).filter((f) => !FONTS.includes(f)
     console.log(`  dist/fonts/${stale}  (removed, no longer used)`);
   } catch (err) {
     console.warn(`  dist/fonts/${stale}  could not be removed (${err.code}) — unused, delete it later`);
-  }
-}
-
-for (const [from, to] of LICENCES) {
-  fs.copyFileSync(from, to);
-  written += 1;
-  console.log(`  ${path.relative(TARGET, to).split(path.sep).join('/')}`);
-}
-
-const i18nSource = path.join(DIST, 'assets', 'i18n');
-if (fs.existsSync(i18nSource)) {
-  const i18nTarget = path.join(TARGET, 'assets', 'i18n');
-  fs.mkdirSync(i18nTarget, { recursive: true });
-  for (const file of fs.readdirSync(i18nSource).filter((f) => f.endsWith('.json'))) {
-    fs.copyFileSync(path.join(i18nSource, file), path.join(i18nTarget, file));
-    written += 1;
-    console.log(`  assets/i18n/${file}`);
   }
 }
 

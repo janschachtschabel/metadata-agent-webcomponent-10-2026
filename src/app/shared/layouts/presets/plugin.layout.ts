@@ -18,34 +18,22 @@ import { LayoutConfig } from '../layout.models';
  */
 export const PLUGIN_LAYOUT: LayoutConfig = {
   name: 'plugin',
-  i18nKey: 'LAYOUT.PLUGIN.NAME',
-  i18nDescription: 'LAYOUT.PLUGIN.DESCRIPTION',
   elements: {
-    // Header
-    header: false,
-    closeButton: false,
-    
     // Input
     inputArea: true,
-    extractButton: true,
-    resetButton: true,
-    
+
     // Status
     statusBar: true,
-    contentTypeSelector: true,
-    progressBar: true,
-    
+
     // Fields
     coreFields: true,
     specialFields: true,
-    fieldActions: true,
+    fieldActions: false,
     groupCollapse: true,
-    
-    // Footer
-    footer: false,
-    
-    // Floating Controls
+
+    // Floating bar
     floatingControls: true,
+    contentTypeSelector: true,
     jsonLoader: false,
     saveButton: true,
     uploadButton: true,
@@ -54,14 +42,9 @@ export const PLUGIN_LAYOUT: LayoutConfig = {
   },
   style: {
     borderless: true,
-    compact: true,
-    columns: 1,
-    cssClass: 'layout-plugin'
+    columns: 1
   },
   behavior: {
-    readonly: false,
-    emitChanges: true,
-    autoExtract: false,
-    contentTypeOnly: false
+    readonly: false
   }
 };

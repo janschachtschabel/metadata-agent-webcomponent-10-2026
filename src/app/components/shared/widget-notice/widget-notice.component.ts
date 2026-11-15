@@ -45,6 +45,8 @@ export interface Notice {
     <div class="notice-live" role="status" aria-live="polite">{{ politeText }}</div>
     <div class="notice-live" role="alert">{{ alertText }}</div>
 
+    <!-- Escape bubbles up from the buttons inside; the box itself takes no focus. -->
+    <!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -->
     <div *ngIf="notice as n"
          class="widget-notice"
          [class.error]="n.kind === 'error'"
@@ -52,9 +54,9 @@ export interface Notice {
          [attr.aria-describedby]="n.question ? textId : null"
          [attr.aria-label]="n.question ? ('COMMON.CONFIRM' | translate) : null"
          (keydown.escape)="onEscape($event)">
-      <!-- info_outline as SVG: edu-sharing's icon font has no such ligature. -->
-      <mat-icon *ngIf="n.kind === 'error' || n.question; else infoIcon" aria-hidden="true">{{ n.kind === 'error' ? 'error_outline' : 'help_outline' }}</mat-icon>
-      <ng-template #infoIcon><mat-icon aria-hidden="true"><app-svg-icon name="info_outline"></app-svg-icon></mat-icon></ng-template>
+      <!-- As SVG: edu-sharing's icon font may lack the outlined ligatures
+           (info_outline it does; error_outline, help_outline: audit 14.11., U-07). -->
+      <mat-icon aria-hidden="true"><app-svg-icon [name]="n.kind === 'error' ? 'error_outline' : n.question ? 'help_outline' : 'info_outline'"></app-svg-icon></mat-icon>
       <!-- A message is read from the live region above, a question from here. -->
       <p class="notice-text" [id]="textId" [attr.aria-hidden]="n.question ? null : 'true'">{{ n.text }}</p>
       <div class="notice-actions" *ngIf="n.question; else dismiss">

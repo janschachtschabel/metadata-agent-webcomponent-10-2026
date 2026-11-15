@@ -2,9 +2,18 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <!-- Zone.js passive event configuration - MUST be before any scripts -->
+  <!-- Zone.js flags of the standalone page; they must be set before zone.js loads.
+       PASSIVE_EVENTS: listeners of these events are registered as passive (no
+       preventDefault). UNPATCHED_EVENTS: zone.js leaves these events alone, so
+       scrolling and pointer moves trigger no change detection.
+       Only here, on the widget's own page: they used to be part of polyfills.js
+       (src/zone-flags.ts), which every embedding page loads - there they
+       overwrote two globals of the host, and where the widget's zone.js was the
+       first on the page they made the host's own wheel and touch listeners
+       passive (audit 14.11., K-25). -->
   <script>
-    window.__zone_symbol__PASSIVE_EVENTS = ['scroll', 'wheel', 'touchstart', 'touchmove', 'touchend', 'mousewheel'];
+    window.__zone_symbol__PASSIVE_EVENTS = ['scroll', 'wheel', 'touchstart', 'touchmove', 'touchend'];
+    window.__zone_symbol__UNPATCHED_EVENTS = ['scroll', 'wheel', 'mousemove', 'mouseenter', 'mouseleave', 'pointermove', 'pointerover', 'pointerout', 'touchmove'];
   </script>
   <title>Metadata Agent Canvas</title>
   <base href="/">

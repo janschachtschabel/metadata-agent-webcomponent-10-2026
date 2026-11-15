@@ -8,17 +8,17 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
 import { ContentType, FieldStatus } from '../../../shared/models/canvas.models';
 import { LayoutBase } from '../layout-base';
 import { FieldComponent } from '../../field/field.component';
-import { JsonLoaderComponent } from '../../json-loader/json-loader.component';
-import { LanguageSwitcherComponent } from '../../language-switcher/language-switcher.component';
+import { ExtractionFeedbackComponent } from '../../shared/extraction-feedback/extraction-feedback.component';
+import { FloatingBarComponent } from '../../shared/floating-bar/floating-bar.component';
+import { GroupHeaderComponent } from '../../shared/group-header/group-header.component';
+import { ContentTypeMenuComponent } from '../../shared/content-type-menu/content-type-menu.component';
 import { PreviewThumbnailComponent } from '../../shared/preview-thumbnail/preview-thumbnail.component';
-import { uniqueId } from '../../../shared/unique-id';
 
 /**
  * Default Layout Component
@@ -44,12 +44,13 @@ import { uniqueId } from '../../../shared/unique-id';
     MatButtonToggleModule,
     MatIconModule,
     MatProgressBarModule,
-    MatMenuModule,
     MatTooltipModule,
     MatSlideToggleModule,
     FieldComponent,
-    JsonLoaderComponent,
-    LanguageSwitcherComponent,
+    ExtractionFeedbackComponent,
+    FloatingBarComponent,
+    GroupHeaderComponent,
+    ContentTypeMenuComponent,
     PreviewThumbnailComponent
   ],
   templateUrl: './default-layout.component.html',
@@ -57,9 +58,8 @@ import { uniqueId } from '../../../shared/unique-id';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DefaultLayoutComponent extends LayoutBase {
+  override groupCollapse = true;
   // Data from parent
-  /** Prefix of the ids aria-controls points at; unique per instance. */
-  readonly _uid = uniqueId('layout');
   @Input() contentTypes: ContentType[] = [];
   @Input() userText = '';
   @Input() sourceUrl = '';
@@ -75,7 +75,6 @@ export class DefaultLayoutComponent extends LayoutBase {
   // Element visibility (can override defaults)
   @Input() showInputArea = true;
   @Input() showStatusBar = true;
-  @Input() showFooter = true;
   @Input() showFloatingControls = true;
   @Input() showFieldActions = true;
   @Input() showContentTypeOnly = false;
@@ -136,8 +135,6 @@ export class DefaultLayoutComponent extends LayoutBase {
   @Output() downloadJson = new EventEmitter<void>();
   @Output() submit = new EventEmitter<void>();
   @Output() upload = new EventEmitter<void>();
-  @Output() dismissError = new EventEmitter<void>();
-  @Output() dismissWarning = new EventEmitter<void>();
   @Output() jsonLoadError = new EventEmitter<void>();
   @Output() screenshotToggle = new EventEmitter<boolean>();
   
@@ -151,14 +148,6 @@ export class DefaultLayoutComponent extends LayoutBase {
       event.preventDefault();
       this.startExtraction.emit();
     }
-  }
-  
-  onDismissError(): void {
-    this.dismissError.emit();
-  }
-
-  onDismissWarning(): void {
-    this.dismissWarning.emit();
   }
   
   onFieldChange(fieldId: string, value: unknown): void {

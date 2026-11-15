@@ -1,7 +1,6 @@
 import { bootstrapApplication, createApplication } from '@angular/platform-browser';
-import { createCustomElement } from '@angular/elements';
 import { appConfig } from './app/app.config';
-import { CanvasComponent } from './app/components/canvas/canvas.component';
+import { createCanvasElement } from './app/canvas-element';
 import { AppComponent } from './app/app.component';
 
 import { WIDGET_VERSION } from './app/version';
@@ -50,14 +49,14 @@ if (isWebComponentMode) {
       return;
     }
 
-    const canvasElement = createCustomElement(CanvasComponent, {
-      injector: app.injector
-    });
+    const canvasElement = createCanvasElement(app.injector);
     Object.defineProperty(canvasElement, 'widgetVersion', { value: WIDGET_VERSION });
 
     customElements.define(ELEMENT_NAME, canvasElement);
 
-    console.log(`✅ Web Component <${ELEMENT_NAME}> v${WIDGET_VERSION} registered`);
+    // The host page's console stays quiet (W-ARCH-01); the version is on
+    // customElements.get('metadata-agent-canvas').widgetVersion.
+    if (WidgetDebug.enabled) console.log(`✅ Web Component <${ELEMENT_NAME}> v${WIDGET_VERSION} registered`);
   })().catch(err => console.error('Web Component bootstrap error:', err));
 } else {
   // Standalone Mode: Bootstrap Angular App

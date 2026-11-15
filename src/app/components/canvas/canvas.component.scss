@@ -56,6 +56,19 @@
       color: var(--mat-app-primary, #003B7C) !important;
     }
   }
+
+  // Focus ring of buttons and links - the same one styles.css draws
+  // (src/styles/main.scss), which never arrives where only the scripts are
+  // loaded (edu-sharing). Material marks a focused button with a state layer
+  // in a colour of the theme; without the widget's theme that layer is
+  // transparent, and nothing showed where the focus was (audit 14.11., U-16,
+  // embedding-without-styles.spec.ts). Inputs show it on the frame above.
+  button:focus-visible,
+  a:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--md-primary, #0062ac);
+    outline-offset: 2px;
+  }
 }
 
 // Visually hidden, read by screen readers (the live region).

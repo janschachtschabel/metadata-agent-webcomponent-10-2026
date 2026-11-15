@@ -1,5 +1,727 @@
 # Änderungen
 
+## 4.0.0 — 2026-11-15 — Korrekturen aus dem Audit vom 14.11.
+
+Gehört zum Agenten 4.0.0. Die Version springt auf 4.0.0, weil sich Verhalten
+für Einbettende ändert (Liste unten); Attribute und Ereignisse heißen wie in
+3.0.1. Zum Release gehört auch der Abschnitt „Korrekturen aus dem Audit vom
+13.11.“ weiter unten, der nie eine eigene Version hatte.
+
+Befunde aus `metadata-agent-3/docs/audits/2026-11-14-audit-3.0.1.md`
+(Abschnitte W und U, dazu K-21 bis K-27). Gebaut am 15.11. und in den Agenten
+4.0.0 ausgeliefert (`src/static/widget`). Drei Teile: Kernlogik und
+Datenfluss; Oberfläche, Barrierefreiheit, Texte; Build, Tests, Abhängigkeiten,
+Dokumentation.
+
+Für Einbettende – Verhalten, das sich ändert (alle drei Teile; die Begründung
+steht jeweils weiter unten):
+
+- **Datensatz ohne leere Werte:** Ein Feld ohne Wert steht nicht mehr im
+  Datensatz (kein `''`, `[]`, `{}`, keine leeren Vorgaben des Agenten), auch
+  keine leeren Container in Objekten (`address: {}`). `null` steht nur noch
+  für ein Feld, das die Redaktion geleert hat. Fehlende Schlüssel als „kein
+  Wert“ lesen (W-41).
+- **Datensatz aus den Feldern:** Nach einem Wechsel des Inhaltstyps enthält er,
+  was das Formular zeigt; Werte gemeinsamer Feld-IDs wandern mit, die übrigen
+  kommen beim Zurückwechseln wieder (W-31). Bearbeitete Objekte sind `user`;
+  `_origins` nennt keine Container mehr (W-32). `schema:provider` hat ein
+  Unterfeld `name` (W-30). Objektfelder sind von Anfang an Objektformulare
+  (W-42).
+- **`metadataChange` sofort nach einer Eingabe** – im selben Task, bevor der
+  Blur-Handler zurückkehrt; andere Änderungen weiter nach 50 ms (W-36).
+- **`contentType` im Datensatz** nennt den Inhaltstyp, wenn `metadataset`,
+  `metadataset_uri` und `schemaFile` fehlen, und ist nie ein Feld (W-39).
+  Kopf-Schlüssel eines flachen Datensatzes (`processing`, `preview_image_url`
+  …) sind nie Felder; was kein Datensatz ist, wird abgelehnt (W-34). Ein
+  Datensatz eines anderen Kontexts oder einer anderen Version bekommt einen
+  Hinweis (W-44).
+- **`metadataInput`** gilt beim Setzen, in der Reihenfolge mit `contentType`;
+  `null` leert nichts; dasselbe Objekt noch einmal importiert nicht – ein neues
+  Objekt übergeben (W-48).
+- **Aus- und wieder eingehängt:** Das Element kommt mit allem zurück, was die
+  Seite gesetzt hat (auch `metadataInput`), nicht mit seither Getipptem;
+  `auto-extract` und `force-reset` werden nicht wiederholt (U-08 a, W-38).
+- **Entferntes Attribut = Vorgabe des Layouts** (auch `undefined` als
+  Property), statt `false` bzw. dem alten Wert; `readonly` ohne Wert heißt
+  Nur-Lesen (U-08 d, W-46). Properties sind lesbar (U-08 c). `autoExtract` und
+  `forceReset` wirken bei jedem Setzen (U-08 b).
+- **Neues Attribut `language`** (`de`/`en`), vor der gemerkten Wahl; ohne es
+  zählt nach der gemerkten Wahl das nächste `lang` der Seite. Gemerkt wird nur
+  noch die Wahl des Umschalters; `app_language` wird nicht mehr gelesen (U-05).
+- **Texte sind im Bundle;** die Datei des Agenten wird darübergelegt und
+  gewinnt – `assets/i18n/` des Agenten muss mit dem Bundle ausgeliefert werden
+  (`build-elements.js` tut beides zusammen). `./assets/i18n/` der einbettenden
+  Seite wird nicht mehr angefragt (U-04).
+- **Nur-Lese-Ansichten zeigen Text:** `.readonly-field`, `.readonly-label`,
+  `.readonly-value`, `.readonly-list` statt `mat-form-field` mit
+  `input:disabled`; URLs sind Links (U-02).
+- **Zeitwähler als Liste:** Uhrzeiten in 15-Minuten-Schritten unter dem Feld
+  statt des Zifferblatt-Dialogs; gespeicherte Werte unverändert (U-06, U-19).
+- **Fortschrittszeile mit „Abbrechen“ in jedem Layout;** Banner überall
+  schließbar; Inhaltstyp-Menü und „Zurücksetzen“ während eines Laufs gesperrt
+  (U-03, U-12, K-23). Nach „Abbrechen“ bleibt vom abgebrochenen Lauf nichts
+  zurück, auch nicht dessen Text als `extended_text` (dritter Teil).
+- **Reihenfolge im `plugin`-Layout:** „An Plugin senden“ vor „Ins Repository
+  hochladen“ (Speichern, Upload, Zurücksetzen wie überall). Gruppen in
+  `plugin` und `prueftisch` lassen sich einklappen; Preset-Schlüssel, die
+  niemand las, sind entfernt (U-12).
+- **`metadataSubmit`** kommt von dem Element, dessen Button gedrückt wurde
+  (W-35).
+- **`repository` wird nicht mehr gesendet** (Upload und Erschließung; W-N).
+  Kein Upload eines Formulars, dem Felder fehlen (`uploadResult` mit
+  `success: false`, W-45). Zeitlimits 30 s / 130 s / 330 s (W-50).
+- **Neue Statustexte** statt Angulars Meldung mit der Anfrageadresse: 401/403,
+  404, 413, 422, 429, jeder andere Status, Zeitüberschreitung, „200, aber kein
+  JSON“ (W-40); dazu `UPLOAD_FORM_INCOMPLETE`, `UPLOAD_NO_ANSWER`,
+  `RECORD_OTHER_SCHEMA`.
+- **Darstellung:** Feldbeschreibung unter dem Feld statt als Platzhalter
+  (U-01); Buttons zum Hinzufügen und Entfernen von Objekteinträgen (W-42);
+  Vokabularauswahl in Seiten zu 200 Einträgen (U-15); Fokusrahmen von Buttons
+  und Links auch ohne `styles.css` (dritter Teil, U-16).
+- **Keine Zone-Flags mehr auf der einbettenden Seite** (K-25).
+- **Auslieferung:** neben den Bundles liegt `dist/build.json` (Version,
+  Build-Zeit, Hashes). `main.js` ist 20 % kleiner (1,16 MB statt 1,45 MB).
+  Eigenständige Seite: `?viewerMode=true` wirkt wieder (dritter Teil).
+
+### Kernlogik und Datenfluss (Abschnitt W, dazu U-08 und K-25)
+
+Im Einzelnen:
+
+- **Der Datensatz ist, was das Formular zeigt (W-31):** Ereignisse,
+  JSON-Download und Upload lasen eine Wertekarte, die dem Formular nur lose
+  folgte. Nach einem Wechsel der Inhaltsart ohne neuen Lauf standen dort Werte,
+  die das Formular leer zeigte (44 Feld-IDs kommen in mehreren Inhaltsarten
+  vor, darunter Lizenzschlüssel); nach einer Korrekturrunde fehlten Werte, die
+  das Formular noch zeigte. Jetzt wird der Datensatz aus den Feldern gebaut.
+  Beim Wechsel der Inhaltsart wandern die Werte der Feld-IDs, die beide Arten
+  haben, mit ihrer Herkunft in die neuen Felder; Werte von Feldern, die die
+  neue Art nicht hat, verlassen den Datensatz und kommen zurück, wenn man zur
+  alten Art zurückwechselt. Schlüssel eines Imports, für die es kein Feld
+  gibt, bleiben wie bisher im Ereignis und im JSON, nicht im Upload.
+- **Eine Regel für leere Werte (W-41):** Ein Feld ohne Wert steht nicht im
+  Datensatz – weder als `''`, `[]` oder `{}` noch als leere Vorgabe des
+  Agenten (bisher 48 Schlüssel für ein Formular mit einem Wert). Als leer
+  gilt auch, was nur Leeres enthält: `[{}]`, `{ "address": {} }`,
+  `[{ "@type": "Place" }]`; solche Felder zählen nicht mehr als gefüllt.
+  Unverändert: ein von der Redaktion geleertes Feld steht als `null` im
+  Datensatz (W-LOG-02), jetzt auch ein vollständig geleertes Objektfeld.
+  Dieselbe Regel gilt für `existing_metadata` des nächsten Laufs. Wer
+  Ereignisse in ein eigenes Formular übernimmt, sollte fehlende Schlüssel als
+  „kein Wert“ lesen und nicht als „unverändert“.
+- **Keine leeren Container in Objekten (W-41):** Jeder Eintrag kam mit
+  `address: {}` und `geo: {}` zurück, auch wenn der Datensatz keines von
+  beiden hatte. Container, die das Formular zeigt, stehen nur noch im Objekt,
+  wenn etwas in ihnen steht; ein importiertes `address: {}` entfällt beim
+  Export. `@type` und Schlüssel ohne Unterfeld bleiben wie hereingekommen
+  (W-LOG-03).
+- **Objektfelder ohne Varianten (W-30):** `schema:provider` in `course.json`
+  und `education_program.json` (ein Objekt ohne beschriebene Unterfelder)
+  wurde in die Schlüssel der eigenen Schema-Definition aufgefächert: 18
+  Eingabefelder „Anbieter (Label.de)“ …, und `label`, `description`, `prompt`,
+  `system` im Datensatz. Jetzt ein Eingabefeld „Anbieter (Name)“; alle anderen
+  Schlüssel des Objekts bleiben erhalten. Export gleich Import.
+- **Objektfelder sind von Anfang an Objektformulare (W-42):** Ein Objektfeld,
+  das im Datensatz fehlt, war ein einfaches Textfeld. Es zeigt jetzt die
+  Unterfelder seiner ersten Variante; ein unberührtes Formular wird weiterhin
+  nicht exportiert. Neu im Dienst: `addObjectEntry(fieldId)` und
+  `removeObjectEntry(fieldId, index)` für Einträge von Objektlisten (die
+  Buttons dazu folgen mit der Oberfläche).
+- **Bearbeitete Objekte gehören der Redaktion (W-32):** Das Ändern eines
+  Unterfelds ließ Status und Herkunft des Objektfelds stehen. Der nächste
+  KI-Lauf bekam `_origins: { "schema:location": "ai" }` und ersetzte das
+  Objekt; ein in ein leeres Feld getipptes Objekt ließ das Feld „leer“. Jetzt
+  ist das Objektfeld danach gefüllt und `user`. `_origins` nennt für
+  Unterfelder nur noch Eingabefelder (nicht mehr Container wie
+  `schema:location.address`), und ein Import stellt die Herkunft je Unterfeld
+  wieder her.
+- **Kein Datensatz, kein Import (W-34):** Eine Liste, ein Text, eine Zahl oder
+  ein `metadata`, das kein Objekt ist, wurden Schlüssel für Schlüssel über das
+  Formular importiert (`["a","b"]` → `{"0":"a","1":"b"}`). Jetzt abgelehnt mit
+  der vorhandenen Meldung (`metadata-input`: „kein gültiges JSON-Objekt“,
+  JSON-Datei: „Fehler beim Laden“); das Formular bleibt, wie es war. In einem
+  flachen Datensatz sind `contextName`, `schemaVersion`, `metadataset`,
+  `metadataset_uri`, `language`, `exportedAt`, `processing`,
+  `preview_image_url`, `_origins` und `_source_text` der Kopf und nie Felder
+  (bisher kamen `processing` und der Screenshot als Felder zurück).
+- **`contentType` im Datensatz (W-39):** Die README-Einbindung legt
+  `contentType` in `metadataInput`. Das Widget las den Schlüssel dort nicht:
+  keine Inhaltsart, keine typspezifischen Felder, `contentType` als Feld im
+  Datensatz. Jetzt nennt er die Inhaltsart (Schemadatei oder URI), wenn
+  `metadataset`, `metadataset_uri` und `schemaFile` fehlen – wie diese vor dem
+  `content-type` des Elements –, und ist nie ein Feld. `schemaFile` ist
+  ebenfalls kein Feld mehr.
+- **Hinweis bei anderem Schema (W-44):** `contextName` und `schemaVersion`
+  eines importierten Datensatzes wurden stillschweigend durch die des Widgets
+  ersetzt. Das Ersetzen bleibt (auch `language` wird die Sprache des Widgets);
+  weichen Kontext oder Version ab, sagt es jetzt das Hinweisbanner
+  (`ALERTS.RECORD_OTHER_SCHEMA`). `latest`/`vlatest` gilt nicht als
+  Abweichung. Ein Import nimmt Fehler- und Hinweisbanner des vorherigen
+  Formulars weg.
+- **`metadataChange` sofort nach einer Eingabe (W-36):** Der Wert wurde beim
+  Verlassen des Feldes übernommen, das Ereignis kam 50 ms später. Für
+  Eingaben der Redaktion (auch Hinzufügen/Entfernen von Objekteinträgen)
+  kommt es jetzt im selben Task, also bevor der Blur-Handler zurückkehrt.
+  Andere Zustandsänderungen werden weiter 50 ms gesammelt. Ein noch wartendes
+  Ereignis wird vor einem Import gesendet statt verworfen (bisher ging so das
+  Ergebnis einer eben beendeten Erschließung verloren).
+- **Mehrere Elemente auf einer Instanz (W-35, W-48):** `metadataSubmit` kommt
+  von dem Element, dessen Button gedrückt wurde (bisher nur vom primären; in
+  jedem anderen tat „Speichern“ nichts). `metadataChange` kommt weiter nur vom
+  primären Element; es meldet einen Import eines anderen Elements einmal und
+  erst, wenn er fertig ist (bisher Zwischenstände), und ein nachgerücktes
+  Element weiß, was zuletzt gemeldet wurde (das Leeren des letzten Werts
+  wurde nicht gemeldet).
+- **`metadataInput` gilt beim Setzen (W-48):** Der Datensatz wurde erst mit
+  der nächsten Änderungserkennung importiert, `contentType` sofort. Im selben
+  Task gesetzt, kam deshalb immer zuerst die Inhaltsart, egal in welcher
+  Reihenfolge. Jetzt entscheidet die Reihenfolge des Setzens, im selben Task
+  wie einen Tick auseinander: zuerst Datensatz, dann `contentType` → die
+  Inhaltsart der Seite; umgekehrt → die des Datensatzes. Folge für
+  `el.metadataInput = {…}; el.contentType = '…'` nach dem Einhängen: zwei
+  Schritte (Import, dann Inhaltsart) statt eines; lädt das Schema der
+  Inhaltsart länger als 50 ms, sind es auch zwei Ereignisse. Nur der
+  Datensatz der ersten Eingänge wartet auf alle anderen (`api-url`,
+  `instance-id`). `metadataInput = null` (auch ein entferntes Attribut)
+  leert nichts; dasselbe Objekt noch einmal zuzuweisen importiert nicht
+  erneut – für einen geänderten Datensatz ein neues Objekt übergeben.
+- **Aus- und wieder eingehängt (U-08 a, W-38):** Angular zerstört die
+  Komponente 10 ms nach dem Aushängen. Gemessen mit Angular 21.2: Beim ersten
+  Wiedereinhängen danach wurde gar keine neue gebaut – das Element zeigte das
+  letzte DOM der zerstörten Komponente und reagierte auf nichts mehr. Jetzt
+  entsteht eine neue Komponente mit allem, was die Seite zuletzt gesetzt hat
+  (Properties und Attribute, auch `metadataInput`). Grenzen: Was die
+  Redaktion seit dem letzten `metadataInput` getippt hat, und das Ergebnis
+  einer Erschließung, sind danach weg (sie wurden per `metadataChange`
+  gemeldet); der Import löst ein `metadataChange` aus. `auto-extract` und
+  `force-reset` werden nicht wiederholt.
+- **Gleicher Wert noch einmal (U-08 b):** `autoExtract = true` und
+  `forceReset = true` wirken bei jedem Setzen, auch mit demselben Wert
+  (Angular verwirft unveränderte Werte). Für alle anderen Eingänge bleibt es
+  dabei; `text` mit demselben Text wie zuvor füllt das nach einer Erschließung
+  geleerte Eingabefeld also nicht erneut – dafür `plugin-extract` nutzen.
+- **Properties lesbar (U-08 c):** `el.layout`, `el.readonly` … liefern, was
+  die Seite zuletzt gesetzt hat (als Property den Wert, als Attribut dessen
+  Text), `undefined`, wenn nichts gesetzt wurde. Bisher fast immer
+  `undefined`.
+- **Entfernte und wertlose Attribute (U-08 d, W-46):** Ein entferntes Attribut
+  heißt „nicht gesetzt“: es gilt die Vorgabe des Layouts bzw. der
+  Standardwert. Bisher zählte es bei den `show-*`-Schaltern und `readonly` als
+  `false` (`removeAttribute('readonly')` entsperrte ein Nur-Lese-Layout), bei
+  `borderless`, `columns`, `flat-groups`, `show-preview`, `highlight-ai` blieb
+  der alte Wert stehen. Gleiches gilt für `undefined` als Property-Wert.
+  `<metadata-agent-canvas readonly>` ohne Wert heißt Nur-Lesen (bisher
+  ausgeschaltet).
+- **Kein Upload eines unvollständigen Formulars (W-45):** Konnte das Schema
+  der Inhaltsart oder das Basisschema nicht geladen werden, sendete „Upload“
+  nur die übrigen Felder. Jetzt erscheint stattdessen eine Meldung
+  (`ALERTS.UPLOAD_FORM_INCOMPLETE`), und `uploadResult` meldet
+  `success: false`. Ein beim Import gescheitertes Basisschema wird im
+  Fehlerbanner gezeigt statt nur protokolliert; die Basisfelder des vorherigen
+  Formulars bleiben dann nicht mit ihren Werten stehen.
+- **Zeitlimits (W-50):** Schema 30 s, Upload 130 s, Erschließung 330 s (über
+  den Limits des Agenten von 100 s und 300 s). Danach eine lesbare Meldung
+  statt endlosem Warten; beim Upload mit dem Hinweis, dass offen ist, ob der
+  Node angelegt wurde. Ein Zurücksetzen gibt den Upload-Button eines
+  hängenden Uploads frei.
+- **Upload und Erschließung ohne `repository` (W-N):** Das Widget sendete
+  immer `repository: "staging"`; der Agent ignoriert das Feld und schreibt in
+  das Repository, für das er eingerichtet ist. Das Feld wird nicht mehr
+  gesendet.
+- **Werte, die nicht zum Feld passen (W-43):** Eine Liste in einem Feld für
+  einen Wert, ein Datum, das nicht `JJJJ-MM-TT` ist (`03.05.2026`), oder ein
+  Text in einem Zahlfeld ließen das Eingabefeld leer, während der Wert im
+  Datensatz blieb und das Feld als gefüllt zählte. Jetzt nennt eine
+  Fehlermeldung am Feld den Wert; umgewandelt wird nichts. Ein einzelner Wert
+  in einem Listenfeld erscheint als ein Chip und bleibt beim Hinzufügen
+  erhalten (bisher brach die Anzeige der Chips ab).
+- **Datum-Zeit behält Sekunden und Zeitzone (W-47):** Aus
+  `2026-05-03T10:00:00+02:00` wurde nach dem Ändern der Stunde
+  `2026-05-03T11:00`. Sekunden und Offset des bisherigen Werts bleiben jetzt
+  erhalten – beim Tippen, im Kalender und auf der Uhr.
+- **Keine Zone-Flags auf der einbettenden Seite (K-25):** `polyfills.js`
+  setzte `__zone_symbol__PASSIVE_EVENTS` und `__zone_symbol__UNPATCHED_EVENTS`
+  auf jeder Seite. Lud die Seite ihr zone.js zuerst (edu-sharing), änderte das
+  nur zwei Globale; lud das Widget zuerst, wurden die Wheel- und
+  Touch-Listener der ganzen Seite passiv. Die Flags stehen jetzt nur noch in
+  der eigenen Seite des Widgets (`src/index.html`); `src/zone-flags.ts`
+  entfällt. In Seiten ohne eigenes zone.js patcht das zone.js des Widgets
+  damit auch Scroll- und Mausbewegungs-Ereignisse.
+- **Neue Texte:** `ALERTS.ANSWER_UNREADABLE`, `ACCESS_DENIED`,
+  `AGENT_NOT_FOUND`, `REQUEST_TOO_LARGE`, `REQUEST_INVALID`,
+  `TOO_MANY_REQUESTS`, `REQUEST_FAILED`, `REQUEST_TIMEOUT`, `UPLOAD_NO_ANSWER`,
+  `UPLOAD_FORM_INCOMPLETE`, `RECORD_OTHER_SCHEMA`;
+  `VALIDATION.STORED_LIST_ON_SINGLE`, `STORED_VALUE_UNREADABLE`. Bis das
+  `assets/i18n/` des Agenten aktualisiert ist, zeigt das Widget dafür seinen
+  englischen Ersatztext.
+
+Weitere Korrekturen:
+
+- **Keine Anfrageadresse in Fehlertexten (W-40, K-24):** Für 401/403, 404,
+  413, 429, ein 422 ohne lesbare Meldung, jeden anderen Status ohne Text des
+  Agenten und für „Status 200, aber kein JSON“ stand im Banner Angulars
+  Meldung mit der vollen Adresse (über edu-sharing der interne Proxy-Pfad).
+  Jetzt eigene Texte je Fall, auch in der Upload-Meldung. Was der Agent selbst
+  sagt, hat weiter Vorrang.
+- **Zweiter Versuch nach gescheiterter Erschließung (W-33):** Der Text des
+  gescheiterten Laufs blieb als „Quelle“ zurück; der nächste Versuch lief als
+  Korrekturrunde und konnte ohne Basisfelder enden (kein Titel in Formular,
+  Export und Upload). Ein gescheiterter Lauf hinterlässt nichts mehr, und
+  fehlende Basisfelder werden vor jedem Lauf gebaut.
+- **Gescheitertes erstes Laden ist nicht endgültig (W-37, K-22):** Typ-Menü
+  und `content-type` blieben bis zum Neuladen der Seite ohne Wirkung. Ein
+  späteres `api-url`, ein Import oder eine Erschließung laden erneut; das
+  Fehlerbanner des ersten Versuchs verschwindet, sobald es geklappt hat.
+- **Vergleich ohne Screenshot (W-49):** Für die Frage „hat sich der Datensatz
+  geändert?“ wurde bei jeder Zustandsänderung der ganze Datensatz samt
+  Screenshot (base64) serialisiert. Vom Bild zählen jetzt Länge, Anfang und
+  Ende.
+- **Kleinigkeiten (W-N):** Eine Schema-Antwort ohne `fields` (200 von etwas
+  anderem als dem Agenten) endet in einer lesbaren Meldung statt in „Cannot
+  read properties of undefined“. Die Gruppen einer Inhaltsart werden nur für
+  den Kontext gemerkt, in dem sie erfragt wurden. Eine von der Seite eben
+  angeforderte Erschließung (`auto-extract`, `plugin-extract`) startet nicht
+  mehr, wenn das Element inzwischen zerstört wurde. Die Texte der Chips werden
+  einmal je Wertänderung berechnet statt zweimal je Änderungserkennung.
+  Entfernt: tote Mitglieder von `SchemaService` (`http`, `ready$`,
+  `ensureReady`), der nie gelesene `_chipDisplayCache`, ungenutzte Typen;
+  `FieldDataType` kennt `object`, `integer`, `time`, `duration`, `json`,
+  `VocabularyInfo.type` kennt `skos`.
+
+### Oberfläche, Barrierefreiheit, Texte (Abschnitt U, dazu W-42 und W-51)
+
+Im Einzelnen:
+
+- **Neues Attribut `language` (U-05):** `language="de"` oder `"en"` (Property
+  `language`; ein Regionalkürzel wie `en-GB` zählt als `en`) legt die Sprache
+  des Widgets fest und gewinnt über die gemerkte Wahl des Sprachumschalters.
+  Bisher konnte die Seite die Sprache nicht setzen, und die für edu-sharing
+  empfohlene Einbindung blendet den einzigen Umschalter aus. Reihenfolge:
+  `language` der Seite → gemerkte Wahl → das nächste `lang` oberhalb des
+  Elements → Sprache des Browsers → Deutsch. Ein entferntes Attribut oder eine
+  Sprache, die das Widget nicht spricht, heißt „nicht gesetzt“. Die Sprache
+  gilt für alle Widgets einer Seite. Betätigt die Redaktion den Umschalter,
+  gilt ihre Wahl, bis die Seite `language` erneut (mit anderem Wert oder nach
+  Wiedereinhängen) setzt.
+- **Gemerkt wird nur noch eine Wahl (U-05):** Das Widget speicherte beim
+  ersten Start die Browsersprache unter `metadata-agent-canvas.language`;
+  danach galt sie als „gewählt“. Jetzt schreibt nur der Sprachumschalter.
+  Der alte Schlüssel `app_language` wird nicht mehr gelesen (ein Name, den
+  jede Seite für eigene Zwecke nutzen kann).
+- **Texte sind im Bundle (U-04):** `de.json` und `en.json` sind eingebaut; die
+  Datei des Agenten (`/widget/i18n/<sprache>.json`) wird darübergelegt, sobald
+  sie da ist. Ließ sie sich nicht laden, zeigte die ganze Oberfläche rohe
+  Schlüssel (`INPUT.START_EXTRACTION`) bis zum Neuladen der Seite. Jetzt
+  stehen die Texte sofort, auch während die Anfrage läuft; ein gescheitertes
+  Laden wird bei der nächsten Sprachverwendung (Sprachwechsel, `api-url`,
+  `language`) wiederholt. Das Widget fragt nicht mehr `./assets/i18n/` der
+  einbettenden Seite an. Ein neues `api-url` leert die Texte nicht mehr,
+  bevor die neuen da sind.
+- **Laufende Erschließung in jedem Layout sichtbar und abbrechbar (U-03,
+  K-23):** `clean`, `detail`, `dialog`, `prueftisch` und `prueftisch-org`
+  zeigten während eines Laufs nichts; es wurde erneut geklickt. Über den
+  Feldern steht jetzt in allen sieben Layouts eine Fortschrittszeile
+  (`role="progressbar"`, „Extraktion läuft …“) mit „Abbrechen“; die
+  Feldgruppen tragen `aria-busy`. „Abbrechen“ bricht die Anfrage ab, zeigt
+  keinen Fehler und lässt das Formular, wie es ist (neu im Dienst:
+  `cancelExtraction()`). Fehler- und Hinweisbanner lassen sich in jedem Layout
+  schließen (bisher nur im Standard-Layout); das Hinweisbanner hat
+  `role="status"`. In `default` und `clean` stehen die Banner jetzt unter der
+  Statusleiste, wie in den anderen Layouts.
+- **Sieben Layouts, ein Verhalten (U-12):** Banner, schwebende Leiste,
+  Inhaltstyp-Menü und Gruppenkopf sind je eine gemeinsame Komponente statt
+  sieben Kopien. Dadurch:
+  - Das Inhaltstyp-Menü ist während eines Laufs in jedem Layout gesperrt
+    (bisher nur im Standard-Layout; ein zweiter Klick startete einen zweiten
+    Lauf). Der Button bleibt fokussierbar (`aria-disabled`).
+  - Der Inhaltstyp-Button der schwebenden Leiste erscheint, wenn
+    `show-content-type` gilt – in `default` und `plugin` jetzt auch, bevor das
+    Formular Felder hat (bisher erst danach).
+  - Ohne Inhaltstyp steht überall „Bitte wählen“ (`detail`, `dialog`,
+    `prueftisch-org` zeigten „Inhaltsart wählen“).
+  - Der gewählte Typ ist in jedem Menü mit einem Haken markiert und als
+    `menuitemradio` mit `aria-checked` ausgezeichnet. Das Menü der schwebenden
+    Leiste im Standard-Layout zeigt dafür keine Typ-Icons mehr.
+  - „Zurücksetzen“ in der schwebenden Leiste ist während eines Laufs gesperrt
+    (wie im Eingabebereich); den Lauf beendet „Abbrechen“.
+  - Im `plugin`-Layout steht „An Plugin senden“ jetzt vor „Ins Repository
+    hochladen“ (Reihenfolge wie im Standard-Layout: Speichern, Upload,
+    Zurücksetzen).
+  - Gruppen lassen sich jetzt auch in `plugin` und `prueftisch` einklappen;
+    ihre Presets versprachen es, die Vorlagen hatten keinen Schalter. Für
+    `dialog` ist `groupCollapse` jetzt `false` (die Vorlage sah keinen vor).
+  - Presets versprechen nur, was ein Layout zeichnet: `floatingResetButton`
+    ist `false` in `detail`, `clean`, `prueftisch`, `prueftisch-org`,
+    `fieldActions` `false` außer in `default`. Die Schlüssel, die niemand las
+    (`header`, `closeButton`, `extractButton`, `resetButton`, `progressBar`,
+    `footer`, `compact`, `cssClass`, `emitChanges`, `autoExtract`,
+    `contentTypeOnly`, `i18nKey`, `i18nDescription`), sind entfernt.
+    `show-footer` bleibt als Eingang ohne Wirkung.
+- **Nur-Lese-Ansichten zeigen Text (U-02):** Ein Wert stand in einem
+  gesperrten Eingabefeld: eine lange URL wurde abgeschnitten, der Rest war
+  weder zu sehen noch per Tastatur erreichbar, ein Screenreader sagte
+  „nicht verfügbar“. Jetzt ist jeder Wert Text, der vollständig umbricht;
+  Adressen in URL-Feldern sind Links (`target="_blank"`,
+  `rel="noopener noreferrer"`, nur `http`/`https`), Listen sind Listen. Das
+  DOM eines Feldes im Nur-Lese-Modus ist damit ein anderes:
+  `.readonly-field`, `.readonly-label`, `.readonly-value`, `.readonly-list`
+  statt `mat-form-field` mit `input:disabled`. Eigenes CSS einer Seite, das
+  auf die gesperrten Felder zielte, greift dort nicht mehr. `clean`, `detail`
+  und `plugin` ragen in Seiten ohne `box-sizing: border-box` nicht mehr 8 bis
+  30 px über das Widget hinaus.
+- **Beschreibung unter dem Feld (U-01):** Die Feldbeschreibung war der
+  Platzhalter (hellgrau, 2,0:1) und verschwand mit dem ersten Zeichen. Sie
+  steht jetzt als Hinweis unter dem Feld und gehört zu dessen
+  `aria-describedby`; Formulare mit Beschreibungen werden dadurch höher
+  (`detail`, `prueftisch` und `prueftisch-org` blenden Hinweise wie bisher
+  aus). Der Platzhalter nennt nur noch das Format (`TT.MM.JJJJ`,
+  `https://...`) in `#6b7280` (4,8:1).
+- **Kalender und Uhr sprechen die Sprache des Widgets (U-06, U-19):** Die
+  Buttons des Kalenders hießen „Open calendar“, „Previous month“ …; sie
+  kommen jetzt aus den Texten des Widgets (`DATEPICKER.*`). Die Uhr war ein
+  Zifferblatt-Dialog einer eigenen Bibliothek mit „CANCEL“/„OK“. Sie ist jetzt
+  der Zeitwähler von Angular Material: eine Liste von Uhrzeiten in
+  15-Minuten-Schritten, die sich unter dem Feld öffnet; jede andere Minute
+  lässt sich wie bisher tippen. Gespeichert wird unverändert `HH:MM` bzw. der
+  ISO-Zeitstempel samt Sekunden und Zeitzone (W-47). `ngx-mat-timepicker` und
+  `@angular/animations` werden nicht mehr gebraucht (`provideAnimations()`
+  entfällt).
+- **Einträge von Objektlisten hinzufügen und entfernen (W-42):** Am Ende
+  jedes Eintrags (ein Veranstaltungsort, eine Zugehörigkeit) steht „Eintrag
+  entfernen“, nach dem letzten „Eintrag hinzufügen“ – mit dem Feldnamen im
+  zugänglichen Namen, nicht im Nur-Lese-Modus, nicht für den einzigen leeren
+  Eintrag. Ein neuer Eintrag ändert den Datensatz erst, wenn er gefüllt wird;
+  das Entfernen eines gefüllten Eintrags ist eine Eingabe (`metadataChange`
+  im selben Task).
+- **Vokabularauswahl (U-15):** Lange Bezeichnungen brechen um (sie endeten
+  mit „…“). Unterbegriffe nennen ihre Ebene im Namen („Algebra, Ebene 2“).
+  Felder mit einem Wert bieten Buttons mit `aria-pressed` statt Checkboxen
+  (ein zweiter Druck nimmt die Wahl zurück, wie bisher). Lange Vokabulare
+  werden zu je 200 Einträgen gezeichnet; „Weitere Einträge anzeigen (noch
+  n)“ holt die nächsten, der Filter durchsucht immer alle.
+- **Fokus, Ansagen, Sprache der Overlays (U-14, U-22, U-23, U-21, U-09):**
+  Startet Strg+Enter die Erschließung, bleibt der Fokus im Textfeld – es ist
+  während des Laufs schreibgeschützt statt gesperrt; „Zurücksetzen“ und
+  „Webseite laden“ sind `aria-disabled`. Feldfehler werden höflich angesagt
+  (`aria-live="polite"` statt `role="alert"` je Feld). Der Overlay-Container
+  des Widgets (Menüs, Kalender) trägt dessen `lang`; setzt ein Dialog der
+  Seite `aria-hidden` auf ihn, nimmt das Widget das Attribut weg, solange es
+  ein Overlay offen hat (zurückgesetzt wird nichts). „Ja“/„Nein“ folgen einem
+  Sprachwechsel.
+- **Neue Texte:** `PROGRESS.EXTRACTION_RUNNING`, `PROGRESS.CANCEL_EXTRACTION`,
+  `INPUT.MODE_LABEL`, `FIELD.CHOOSE_TIME`, `FIELD.ADD_ENTRY`,
+  `FIELD.ADD_ENTRY_FOR`, `FIELD.REMOVE_ENTRY`, `FIELD.REMOVE_ENTRY_FOR`,
+  `FIELD.VOCAB_LEVEL`, `FIELD.VOCAB_SHOW_MORE` und elf `DATEPICKER.*`.
+  Entfernt: die 14 Schlüssel `LAYOUT.<LAYOUT>.NAME`/`.DESCRIPTION`, die
+  nichts anzeigte. Geändert (deutsch): durchgehend „Sie“
+  (`FIELD.VOCABULARY_CONTROLLED`) und „Inhaltstyp“ statt „Inhaltsart“
+  (`CONTENT_TYPE.SELECT`, `ALERTS.UPLOAD_FORM_INCOMPLETE`,
+  `EXTRACTION_RESULT.CONTENT_TYPE_UNCERTAIN`, `…SCHEMA_UNAVAILABLE`). Da die
+  Texte eingebaut sind, erscheinen die neuen auch, solange das
+  `assets/i18n/` des Agenten sie noch nicht hat.
+
+Weitere Korrekturen:
+
+- **Icons (U-07):** `captive_portal` („Webseite laden“) gibt es in der
+  ausgelieferten Schrift nicht – der Name stand als Text auf dem Button;
+  jetzt `web`. `error_outline` und `help_outline` werden wie `info_outline`
+  als SVG gezeichnet (die Schrift von edu-sharing kennt die Outline-Namen
+  nicht sicher). Ein Spec prüft jeden Icon-Namen der Vorlagen gegen die
+  Codepoint-Liste der Schrift.
+- **Farben (U-13):** Warntext `#b34700` (war `#e65100`, 3,8:1), auch im
+  Pflichtfeld-Badge der Statusleiste; Gruppenzähler und Einklapp-Icon in
+  `$text-secondary` (war `#8b95a5`, 3,0:1); der graue Rand der Radiobuttons
+  (2,7:1) entfällt zugunsten der Farbe von Material; KI-Violett auf Chips
+  `#6d28d9` (war 4,2:1 beim Überfahren); Gruppen-Icon in `prueftisch-org`
+  `#666666` (war 4,4:1); die eingeschaltete Spur des Screenshot-Schalters
+  `#5b667a` (war 1,2:1). Die axe-Prüfung läuft für die Layouts jetzt mit
+  `color-contrast` unter dem eigenen Theme.
+- **Schwebende Leiste (U-25):** Ihre Einblendung bewegte sie 0,3 s lang um
+  die halbe Breite nach links (ein `translateX(-50%)` aus einer früheren
+  Zentrierung) und ließ sie dann springen; jetzt nur noch von unten. In einem
+  320 px breiten Widget umbricht sie, statt hinauszuragen.
+- **Kalender, Uhr und Vorschlagsliste nur, wo ein Feld sie hat (U-18):**
+  Jedes Feld erzeugte zwei Kalender, zwei Uhren und eine Vorschlagsliste.
+  Ungenutzte Material-Importe sind entfernt.
+- **Kleinigkeiten (U-N):** Gruppen heißen in jedem Layout `<h3>` (`detail`
+  hatte `<h2>`); Großschreibung per CSS statt als Text (`plugin`,
+  `prueftisch`, `prueftisch-org`); die Gruppe der Eingabearten hat einen
+  Namen; ein Icon für „noch offen“ in beiden Statusleisten
+  (`hourglass_empty`); eine CSS-Regel, die nichts traf, ist entfernt;
+  `ng serve` antwortet nur noch auf `localhost`.
+- **Aufgeräumt (U-24, W-51, K-21):** Entfernt sind die veralteten Demo-Kopien
+  `src/examples/` und die Asset-Einträge `src/schemata` (gab es nicht) und
+  `src/examples` in `angular.json`; `src/app/shared/layouts/styles/*.scss`
+  und `src/app/shared/layouts/README.md`; von `LayoutService` alles außer
+  `getLayout()`; `CANVAS_INPUT_PARAMETERS`; `FieldComponent.showActions` und
+  seine Bindungen; fünf Kopien von `getGroupIcon` (keine Gruppen-ID traf je
+  einen Eintrag ihrer Tabelle). Specs schalten Materials Animationen über
+  `src/app/testing/no-animations.ts` ab statt über `NoopAnimationsModule`.
+
+### Build, Tests, Abhängigkeiten, Dokumentation (U-10, U-11, U-16 bis U-20)
+
+Für Einbettende – Verhalten, das sich ändert:
+
+- **„Abbrechen“ hinterlässt nichts (Nachtrag zu K-23, W-33):** Nach dem
+  Abbrechen einer Erschließung blieb deren Text als „Quelle“ des Formulars
+  stehen: Ein Upload sendete ihn als `extended_text`
+  (`ccm:oeh_extendedText`), und eine spätere Typ-Wahl ließ den abgebrochenen
+  Lauf – auch eine abgebrochene URL – noch einmal laufen. Quelltext und
+  gemerkte Eingabe sind jetzt sofort wieder die von vor dem Lauf, wie nach
+  einem gescheiterten.
+- **Fokusrahmen ohne `styles.css` (U-16):** Den Fokusrahmen zeichnete nur
+  `styles.css`, das edu-sharing nicht lädt. Material markiert einen
+  fokussierten Button mit einer Fläche in einer Farbe des Themes; ohne das
+  Theme des Widgets ist sie durchsichtig – ohne Material-Theme der Seite war
+  der Fokus auf keinem Button zu sehen (auf Eingabefeldern schon, über den
+  Rahmen). Buttons, Links und `[tabindex]` bekommen den Rahmen (2 px,
+  `--md-primary`, sonst `#0062ac`) jetzt aus `main.js`. Mit `styles.css`
+  ändert sich nichts; in edu-sharing erscheint er zusätzlich zu dem, was
+  dessen Theme zeigt. Die Overlays (Menüs, Kalender, Uhrzeiten,
+  Vokabular-Dialog) hängen außerhalb des Elements und sind davon nicht
+  erfasst.
+- **`?viewerMode=true` auf der eigenständigen Seite:** Seit der Korrektur zu
+  U-08 d (ein nicht gesetztes `readonly` heißt „Vorgabe des Layouts“) nahm die
+  Bindung `[readonly]` der Seite zurück, was `viewerMode` gesetzt hatte. Die
+  Seite bindet jetzt `readonly ?? viewerMode`; sind beide angegeben, gewinnt
+  `readonly`. Das Attribut `viewer-mode` des Elements war nicht betroffen.
+- **`build.json` neben den Bundles (U-17):** `scripts/build-elements.js`
+  schreibt `dist/build.json` in das Widget-Verzeichnis des Agenten:
+  `name`, `version` (aus `package.json`), `builtAt`, je ausgelieferter Datei
+  ein SHA-256 und `hash` über alle (die Zeilen `<sha256>  <pfad>` in der
+  Reihenfolge der Pfade). Die Datei wird mit ausgeliefert
+  (`/widget/dist/build.json`); das Widget liest sie nicht.
+
+Auslieferung (`scripts/build-elements.js`, U-17):
+
+- Lehnt ein `dist/` ab, in dem eine JavaScript-Datei liegt, die es nicht
+  ausliefert (ein nachgeladener Chunk bliebe sonst stillschweigend liegen),
+  und eines mit zwei Kandidaten für ein Bundle.
+- Erlaubt-Liste statt Verbotsliste für Hosts in den Bundles: `www.w3.org`
+  (XML-Namensräume), `angular.dev` (Links in Angulars Fehlermeldungen),
+  `example.com` (Platzhalter). Alles andere stoppt die Auslieferung.
+- Verlangt `de.json` und `en.json` in `dist/assets/i18n` und prüft, dass
+  `main.js` deren Texte enthält (verglichen werden die reinen ASCII-Texte, 62
+  deutsche und 105 englische). Die Dateien gehen weiter an den Agenten
+  (`/widget/i18n/<sprache>.json`), jetzt zusammen mit den Bundles: erst unter
+  `.tmp`, dann gemeinsam umbenannt. Scheitert das Schreiben, bleibt alles, wie
+  es war (bisher wurden die Texte nach dem Tausch kopiert).
+- Schriften und Lizenztexte werden vor dem Tausch geschrieben; `build.json`
+  als Letztes.
+
+Abhängigkeiten (U-10, U-19):
+
+- `ngx-mat-timepicker` (mit `ts-luxon`) und `@angular/animations` sind aus
+  `package.json` entfernt; kein Quelltext nutzte sie mehr. `NOTICE` nennt sie
+  nicht mehr und führt die vier SVG-Symbole auf.
+- `npm audit fix` und ein `npm update` innerhalb der Bereiche von
+  `package.json` (nur `package-lock.json`): Angular 21.2.25 → 21.2.26,
+  `@angular-devkit/build-angular` → 21.2.30. `npm audit` meldet keinen hohen
+  Befund mehr (vorher 1 niedrig, 22 mittel, 7 hoch); `npm audit --omit=dev`
+  bleibt bei 0. Die verbliebenen 25 mittleren Meldungen gingen auf zwei
+  Hinweise zurück (`glob` 13 unter `pacote` in `@angular/cli`, `minimatch` 10
+  unter `typescript-eslint`); `overrides` in `package.json` heben genau diese
+  Stellen auf die korrigierten Versionen (`glob` ≥ 14.0.2, `minimatch` ≥
+  11.0.1). `npm audit` meldet damit 0 Befunde. Die Overrides können entfallen,
+  sobald `@angular/cli` und `typescript-eslint` die Versionen selbst verlangen.
+- Der Dev-Audit-Job in `.gitlab-ci.yml` ist jetzt blockierend bei `high`; sein
+  Kommentar nennt die tatsächlichen Befunde statt `braces`.
+- **Offen (Schulden):** Karma und der Webpack-Builder sind weiter abgekündigt
+  (Vitest und `@angular/build:application` als eigenes Release).
+
+ESLint (U-19, W-ARCH-02):
+
+- Neu: ESLint 10 mit `angular-eslint` 21.4 und `typescript-eslint` 8
+  (`eslint.config.js`, `npm run lint`, blockierender CI-Job `lint`): die
+  empfohlenen Regeln für TypeScript und Vorlagen und die
+  Barrierefreiheits-Regeln für Vorlagen. Der Lauf endet ohne Fehler, mit 180
+  Warnungen.
+- Nicht massenhaft umgeschrieben, sondern mit Begründung in der Konfiguration:
+  `no-explicit-any` als Warnung im Anwendungscode (167 Stellen; in Specs aus),
+  `no-output-native` als Warnung (13 Ausgänge der Layouts heißen `reset`,
+  `cancel`, `submit`), `prefer-inject` aus (35 Konstruktoren),
+  `template/prefer-control-flow` aus (180 `*ngIf`/`*ngFor` in 16 Vorlagen).
+- Behoben, was eine Zeile war: `Object` als Typ in `WidgetDateAdapter.format`,
+  eine nutzlose Zuweisung in `ShapeExpanderService.entriesOf`, ein ungenutztes
+  `err` in `build-elements.js`. Zwei Fundstellen von
+  `interactive-supports-focus` (Hüllen, die Tasten ihrer Eingabefelder
+  abfangen) sind mit Begründung in der Vorlage ausgenommen.
+
+Typprüfung, Budget, CI (U-18, U-20):
+
+- `tsconfig.app.json` (`files: ["src/main.ts"]`) ist die Konfiguration des
+  Builds: Specs und `src/app/testing` gehören nicht mehr zur Typprüfung des
+  Produktions-Builds. `tsconfig.json` bleibt die Basis für Editor und Specs.
+- Budget für das Start-Bundle: Warnung ab 1,4 MB, Fehler ab 1,6 MB (vorher
+  1,6 / 2 MB). Gemessen am 14.11.: 1 265 535 Bytes, davon `main.js`
+  1 163 375 (263 842 gzip; vor dieser Runde 1 449 737 / 328 747).
+  `polyfills.js` setzt keine Zone-Flags mehr (K-25, am Build geprüft); kein
+  Verweis auf `ngx-mat-timepicker`, luxon oder `@angular/animations`.
+- CI: neuer blockierender Job `lint`; der Build-Job ist zugleich die
+  Größenprüfung und legt `elements-check/` (mit `build.json`) als Artefakt ab;
+  der Abgleich des Bundles im Agenten gegen `build.json` ist in
+  `.gitlab-ci.yml` beschrieben (der Job selbst gehört in die Pipeline des
+  Agenten).
+
+Tests (U-16):
+
+- 1281 Specs (vorher 1215). Abdeckung 88,65 / 77,74 / 89,80 / 90,39 %;
+  Untergrenzen in `karma.conf.js` jetzt 84 / 73 / 85 / 86 (vorher
+  75 / 60 / 72 / 77).
+- **Einbettung ohne `styles.css`** (`embedding-without-styles.spec.ts`): Die
+  sieben Layouts laufen mit abgeschaltetem globalem Stylesheet, wie
+  edu-sharing sie lädt, und ohne Material-Theme eines Hosts: keine
+  axe-Verstöße, jedes Bedienelement hat einen Namen, jedes Icon ist ein
+  gezeichnetes SVG oder Schmuck (`aria-hidden`), der Fokus ist zu sehen (das
+  schlug fehl, siehe oben), Nur-Lese-Werte sind Text.
+- Die Tabellen der README (Layout-Matrix, Aliase) werden aus den Presets und
+  `MODE_LAYOUT_MAP` erzeugt und mit beiden Sprachfassungen verglichen
+  (`readme-tables.spec.ts`).
+- Jeder Textschlüssel, der in einer Vorlage oder im Code steht, existiert in
+  `de.json` und `en.json` (`i18n-keys.spec.ts`; die Quelltexte werden den
+  Specs dafür als Assets ausgeliefert). `WIDGET_VERSION` ist die Version aus
+  `package.json` (`version.spec.ts`).
+- Property-Bindings eines Templates (im selben Task nach dem Einhängen
+  gesetzt): Layout und Datensatz kommen an, das Standard-Layout wird zuvor
+  einmal gebaut und ungemalt ersetzt; `context-name` und `schema-version`
+  kommen so zu spät (`canvas-element.spec.ts`).
+- Wartezeiten auf die 50 ms des `metadataChange` laufen über `jasmine.clock()`
+  statt über die Wanduhr (`canvas-metadata-change.spec.ts`,
+  `canvas-report-timing.spec.ts`, `canvas-host-import.spec.ts`); `settle()`
+  des Harness dreht echte Runden der Ereignisschleife und bedient dabei eine
+  gestellte Uhr. Die Specs des Custom Elements behalten echte Zeit (die 10 ms
+  sind die von Angular).
+- **Offen:** 31 Aufrufe privater Methoden über `as any` in Specs
+  (`updateState`, `regenerateWithContentType`, `applyValueToField`,
+  `captureScreenshotAsync`, `scheduleMetadataChange`, `parseQueryParams`) –
+  sie stellen einen Zustand her, für den es keinen öffentlichen Weg gibt;
+  einer ist durch den öffentlichen ersetzt (`startExtraction()` ohne Text
+  statt `say()`).
+
+Dokumentation (U-11):
+
+- README (beide Sprachen) gegen den Code geprüft und berichtigt: Reihenfolge
+  der Agent-Adresse (`api-url` gewinnt über `window.__ENV.agentUrl`);
+  `columns` je Layout (`plugin` kennt nur 2, `detail` ordnet Gruppen);
+  `metadataSubmit` nur in `plugin` und `dialog`; flache Gruppen sind eine
+  Gruppe für alles; von `environment.ts` wirken `apiUrl` und `logLevel`;
+  `--target` nennt den 3.x-Agenten; Property-Bindings und Wiedereinhängen;
+  Texte im Bundle; Datensatz-Regeln; neue Abschnitte „Browser-Erweiterung“
+  und „Spalten“; Matrix mit `groupCollapse` und allen Preset-Schlüsseln.
+  `docs/URL-PARAMETERS*.md`: Herkunft der Adresse, `flatGroups`, `viewerMode`.
+
+## 4.0.0 — Korrekturen aus dem Audit vom 13.11. (Teil desselben Releases)
+
+Befunde aus `metadata-agent-3/docs/audits/2026-11-13-audit-3.0.1.md`
+(Abschnitt „Webkomponente“). Attribute und Ereignisse heißen wie in 3.0.1.
+Entstanden am 13.11., veröffentlicht mit 4.0.0.
+
+Für Einbettende – Verhalten, das sich ändert:
+
+- **Objektfelder behalten `@type` und fremde Schlüssel (W-LOG-03):** Export,
+  Upload, Ereignisse und `existing_metadata` bauten ein Objekt nur aus den
+  Unterfeldern der gezeigten Variante. `@type` und jeder Schlüssel ohne
+  Unterfeld fielen weg; beim nächsten Öffnen erschien die erste Variante
+  (`schema:location`: ein Online-Ort als `Place`-Formular ohne URL). Jetzt ist
+  der Eintrag, wie er hereinkam, die Grundlage; die Unterfelder liegen darüber.
+  Im Datensatz stehen damit `@type` und zuvor verlorene Schlüssel. Ein im
+  Formular neu ausgefülltes Objekt bekommt das `@type` seiner Variante (nicht
+  bei „Default“, das keine eigene Art bezeichnet). Ein Objekt ohne `@type`
+  gilt als die Variante, deren Unterfelder es hat, bei Gleichstand wie bisher
+  als die erste. Einträge einer Variante ohne Unterfelder (`PostalAddress` in
+  `event.json`) bleiben erhalten statt zu verschwinden. Ein unberührtes
+  Formular wird weiterhin nicht exportiert; `@type` allein zählt nicht als
+  Inhalt. Die Objekte der einbettenden Seite werden nicht mehr verändert
+  (vorher schrieb das Widget in deren `address`/`geo`).
+- **Weniger `metadataChange` (W-LOG-06):** Das Ereignis kam bei jeder
+  Zustandsänderung – mit leerem Datensatz beim Start, für Zwischenschritte
+  eines Imports und für Änderungen ohne Wirkung auf den Datensatz. Jetzt: kein
+  Ereignis, solange das Formular leer ist und nichts gemeldet wurde; genau
+  eines nach jedem abgeschlossenen Import (auch bei gleichem Datensatz), nach
+  jeder Erschließung und nach jeder Feld-Änderung; sonst nur, wenn sich der
+  Datensatz gegenüber dem zuletzt gemeldeten unterscheidet (`exportedAt` zählt
+  nicht). Ein `content-type` allein auf leerem Formular löst keines mehr aus,
+  ein Zurücksetzen meldet weiter den leeren Datensatz.
+- **Geleerte Felder melden `null` (W-LOG-02):** Ein geleertes Text-, Zahl-,
+  URL-, Dauer-, JSON- oder Datumsfeld meldete nichts, der alte Wert blieb im
+  Datensatz. Gilt auch für Unterfelder: der Schlüssel entfällt im Objekt.
+  Listenfelder sind nicht betroffen (ihr Eingabefeld ist nur der Entwurf des
+  nächsten Eintrags). Ein unlesbar getipptes Datum wird wieder als Fehler
+  gezeigt statt stillschweigend verworfen.
+- **Ja/Nein-Felder liefern `true`/`false` (W-LOG-07):** Die Auswahl speicherte
+  die Texte `'true'`/`'false'`; nach einer Erschließung (echte Wahrheitswerte)
+  war nichts gewählt. Als Text gespeicherte Werte (`'true'`, `'ja'` …) wählen
+  weiter die passende Option, bleiben im Datensatz aber Text, bis jemand klickt.
+- **Getipptes gilt sofort (W-LOG-01):** Ein Wert erreichte den Datensatz erst
+  200 ms nach Verlassen des Feldes; „Hochladen“, „Speichern“ oder der
+  JSON-Download direkt danach enthielten den alten Wert. Die Wartezeit gibt es
+  nur noch bei offener Vorschlagsliste (Klick auf einen Vorschlag), und die
+  drei Aktionen übernehmen Wartendes vorher.
+- **`schemaVersion` im Datensatz ist die echte Version (W-LOG-04):** z. B.
+  `v2.0.0` statt `vlatest`, sobald der Agent das Basisschema geliefert hat.
+  `/generate` läuft mit `schema-version` statt immer mit `latest`.
+- **`readonly` sperrt die Inhaltstyp-Wahl (W-LOG-09):** Das Menü ist in allen
+  Layouts und in der Statusbar gesperrt; eine Auswahl baute das Formular um und
+  startete eine KI-Erschließung. `content-type` der Seite wirkt weiter.
+- **Vorschaubild nur von `data:image/…`, `https:` oder dem eigenen Host
+  (W-SEC-01):** Adressen fremder Hosts ohne TLS (`http://…`) aus
+  `preview-image` oder `preview_image_url` werden nicht mehr geladen; im
+  Datensatz bleiben sie. Relative Adressen und solche der einbettenden Seite
+  selbst (auch ohne TLS, etwa in der Entwicklung) werden weiter gezeigt.
+- **Doku neu gegliedert, Englisch als Standard:** `README.md` (englisch) und
+  `README.de.md` (deutsch) mit gleichem Aufbau, ebenso
+  `docs/URL-PARAMETERS.md` / `.de.md`. Neu ist der Abschnitt „Vor dem ersten
+  Zeichnen konfigurieren“ zum kurz sichtbaren Eingabebereich: Ursache, drei
+  funktionierende Wege, Messwerte am Bundle und die kleinste Korrektur für
+  edu-sharing (ein statisches `layout`-Attribut im Template).
+- **`metadata-input` als Attribut (W-SEC-01):** JSON-Text wird einmal gelesen.
+  Vorher wurde er zeichenweise importiert (Schlüssel `0`, `1`, …). Was kein
+  einzelnes Objekt ist, wird mit einer Meldung abgelehnt.
+- **Neue Texte:** `ALERTS.NETWORK_UNREACHABLE`, `SERVICE_UNAVAILABLE`,
+  `SERVICE_TIMEOUT`, `METADATA_INPUT_INVALID`. Sie kommen vom Agenten; bis
+  dessen `assets/i18n/` aktualisiert ist, zeigt das Widget dafür seinen
+  englischen Ersatztext.
+
+Weitere Korrekturen:
+
+- **Abgelöste Läufe werden abgebrochen (W-PERF-01):** Reset, Import, eine neue
+  Erschließung und ein Typwechsel verwarfen nur die Antwort; die Anfrage lief
+  am Agenten bis zu 300 s weiter (drei Typwechsel: vier Läufe). Jeder Lauf hat
+  jetzt einen `AbortController`. Auch wenn das letzte Element einer Instanz
+  verschwindet, wird abgebrochen. Ein Abbruch erscheint nicht als Fehler.
+- **Einstellungen der Seite überstehen Reset und `instance-id` (W-LOG-08):**
+  `enable-screenshot`, `screenshot-method` und `preview-image` lagen nur im
+  Zustand und gingen mit ihm verloren.
+- **Kein Absenden fremder Formulare (W-ARCH-01):** 40 Buttons hatten kein
+  `type`; in einem `<form>` der Seite schickte ein Klick darauf das Formular
+  ab. Alle 51 tragen `type="button"`.
+- **Stille Konsole (W-ARCH-01):** „Web Component … registered“ und „Context
+  set“ erscheinen nur noch mit `debug="true"`.
+- **Lesbare Fehler ohne Antwort des Agenten (W-LOG-10):** Bei fehlender
+  Verbindung, 5xx ohne JSON oder Zeitüberschreitung eines Proxys stand im
+  Banner Angulars Meldung mit der vollen Adresse. Jetzt eigene Texte, mit
+  Anfrage-ID, wenn der Agent eine nennt. Fehler- und Hinweisbanner brechen
+  lange Wörter um (die Anfrage-ID hat 32 Zeichen).
+- **Hinweise des Agenten sichtbar:** `processing.warnings` („Text auf 150.000
+  Zeichen gekürzt“, „Orte bleiben ohne Koordinaten: …“) erscheint nach der
+  Erschließung im Hinweisbanner aller Layouts und wird mit deren Ende
+  vorgelesen.
+- **`layout = null`** oder `removeAttribute('layout')` wirft nicht mehr, es
+  gilt das Standard-Layout (W-SEC-01).
+- **README (W-DOC-01):** Matrix mit den Presets abgeglichen (`contentType` in
+  `dialog` und `detail` aus); Attribute ohne Wirkung benannt (`show-footer`
+  überall, `show-field-actions` außer im Gruppenkopf von `default`, Upload,
+  Save, Reset und JSON-Loader in Layouts ohne diese Buttons); Lizenz
+  Apache-2.0; `docker build` ohne Dockerfile entfernt; i18n-Pfad
+  `/widget/i18n/<lang>.json`; `defaultVersion: 'latest'`.
+- **Nicht geändert, nur dokumentiert (W-LOG-05):** `api-url`, `context-name`
+  und `schema-version` lädt das Widget einmal beim Einhängen. Spätere
+  Änderungen von Kontext und Version wirken nicht, ein späteres `api-url` lädt
+  kein Schema neu. Steht jetzt im README („API & Schema“).
+
+Tests: 615 Specs (vorher 449), darunter erstmals solche, die einen Wert von der
+Tastatur bis zum Ereignis der Seite verfolgen (`src/app/testing/canvas-harness.ts`).
+Abdeckung Statements 79,97 %, Branches 66,49 %, Functions 77,60 %, Lines 82,07 %.
+
 ## 3.0.1 — 2026-10-20 — Symbole in edu-sharing
 
 Gehört zum Agenten 3.0.1. Attribute, Ereignisse und Ansichten wie in 3.0.0.

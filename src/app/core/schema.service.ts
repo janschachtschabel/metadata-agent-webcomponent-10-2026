@@ -1,14 +1,13 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, firstValueFrom } from 'rxjs';
 import { ConfigService } from './config.service';
 import { I18nService } from './i18n.service';
 import { ApiService } from './api.service';
-import { 
-  FieldDefinition, 
-  ContentType, 
-  I18nString,
-  VocabularyConcept 
+import { translated } from './canvas-feedback';
+import { WidgetDebug } from './debug';
+import {
+  FieldDefinition,
+  ContentType,
+  VocabularyConcept
 } from '../shared/models/canvas.models';
 import { environment } from '../../environments/environment';
 
@@ -19,29 +18,11 @@ interface ContextInfo {
   basePath: string;
 }
 
-interface ContextEntry {
-  name: string;
-  description?: string;
-  defaultVersion: string;
-  path: string;
-  basedOn?: string;
-}
-
-interface ContextRegistry {
-  contexts: Record<string, ContextEntry>;
-  defaultContext: string;
-}
-
-interface SchemaManifest {
-  name: string;
-  version: string;
-  description?: I18nString;
-  schemas: string[];
-}
-
 interface CoreSchema {
   fields: FieldDefinition[];
   groups: any[];
+  /** The version the agent answered with; says what 'latest' is. */
+  version?: string;
 }
 
 /**
@@ -54,24 +35,12 @@ export class SchemaService {
   private coreSchema: CoreSchema | null = null;
   private contentTypeSchemas = new Map<string, FieldDefinition[]>();
   private contentTypeGroups = new Map<string, any[]>();
-  
-  private ready$ = new BehaviorSubject<boolean>(false);
 
   constructor(
-    private http: HttpClient,
     private config: ConfigService,
     private i18n: I18nService,
     private api: ApiService
   ) {}
-
-  // ===== Initialization =====
-
-  async ensureReady(): Promise<void> {
-    if (this.ready$.value) return;
-    
-    // No registry loading needed - API provides schema info
-    this.ready$.next(true);
-  }
 
   // ===== Context Management =====
 
@@ -97,8 +66,6 @@ export class SchemaService {
   }
 
   private async applyContext(name: string, version?: string): Promise<void> {
-    await this.ensureReady();
-
     // Use provided values or defaults from environment
     const contextName = name || (environment as any).defaultContext || 'default';
     const contextVersion = version || (environment as any).defaultVersion || 'latest';
@@ -120,23 +87,33 @@ export class SchemaService {
     this.contentTypeGroups.clear();
     this.contentTypeLoads.clear();
 
-    this.config.info(`Context set: ${contextName} v${contextVersion}`);
+    // Not into the host page's console at every start (W-ARCH-01).
+    if (WidgetDebug.enabled) this.config.info(`Context set: ${contextName} v${contextVersion}`);
   }
 
   getContextName(): string {
     return this.currentContext?.key || 'default';
   }
 
+  /** The version the host configured, as the agent's endpoints take it ('latest' or a number). */
+  getVersion(): string {
+    return this.currentContext?.version || 'latest';
+  }
+
+  /**
+   * The version for the exported record: the one the agent built the form
+   * from, once its core schema is here - 'vlatest' named no version (W-LOG-04).
+   */
   getSchemaVersion(): string {
-    return this.currentContext?.version ? `v${this.currentContext.version}` : 'vlatest';
+    const version = this.coreSchema?.version || this.currentContext?.version;
+    return version ? `v${version}` : 'vlatest';
   }
 
   // ===== Schema Loading (via API) =====
 
   async loadCoreSchema(): Promise<CoreSchema> {
     if (this.coreSchema) return this.coreSchema;
-    
-    await this.ensureReady();
+
     if (this.pendingContext) {
       await this.pendingContext;
     }
@@ -147,7 +124,11 @@ export class SchemaService {
     const context = this.currentContext!;
     if (this.coreLoad?.context !== context) {
       const promise = this.api.getSchema(context.key, context.version, 'core.json').then(response => {
-        const core: CoreSchema = { fields: response.fields as FieldDefinition[], groups: (response as any).groups || [] };
+        const core: CoreSchema = {
+          fields: this.fieldsOf(response),
+          groups: (response as any).groups || [],
+          version: (response as any).version,
+        };
         // Cached only for the context it belongs to; a switch meanwhile asks again.
         if (this.currentContext === context) this.coreSchema = core;
         this.config.debug(`Core schema loaded from API: ${core.fields.length} fields`);
@@ -195,7 +176,7 @@ export class SchemaService {
       const version = current?.version || 'latest';
       
       const response = await this.api.getSchema(context, version, schemaFile);
-      const fields = response.fields as FieldDefinition[];
+      const fields = this.fieldsOf(response);
       // Cached only for the context it was asked in (L-11): after a switch it
       // would be served as the new context's schema.
       if (this.currentContext === current) {
@@ -214,6 +195,21 @@ export class SchemaService {
       this.config.error(`Failed to load schema from API: ${schemaFile}`, error);
       throw error;
     }
+  }
+
+  /**
+   * The fields of a schema answer. A 200 that is no schema (another service
+   * behind the address, a proxy's JSON page) used to end in "Cannot read
+   * properties of undefined"; it fails with a text the editor can act on
+   * (audit 14.11., W-N).
+   */
+  private fieldsOf(response: unknown): FieldDefinition[] {
+    const fields = (response as { fields?: unknown } | null)?.fields;
+    if (!Array.isArray(fields)) {
+      throw new Error(translated(this.i18n, 'ALERTS.ANSWER_UNREADABLE', undefined,
+        'The answer is not a result of the metadata agent. Please check the address of the agent (api-url).'));
+    }
+    return fields as FieldDefinition[];
   }
 
   // ===== Content Types =====
@@ -316,12 +312,15 @@ export class SchemaService {
     if (this.contentTypeGroups.has(schemaFile)) {
       return this.contentTypeGroups.get(schemaFile)!;
     }
+    const current = this.currentContext;
     try {
-      const context = this.currentContext?.key || 'default';
-      const version = this.currentContext?.version || 'latest';
+      const context = current?.key || 'default';
+      const version = current?.version || 'latest';
       const response = await this.api.getSchema(context, version, schemaFile);
       const groups = (response as any).groups || [];
-      this.contentTypeGroups.set(schemaFile, groups);
+      // Cached only for the context it was asked in, like the fields (L-11):
+      // after a switch meanwhile these are the other context's groups (W-N).
+      if (this.currentContext === current) this.contentTypeGroups.set(schemaFile, groups);
       return groups;
     } catch {
       return [];

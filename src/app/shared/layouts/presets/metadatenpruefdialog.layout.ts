@@ -26,50 +26,33 @@ import { LayoutConfig } from '../layout.models';
  */
 export const METADATENPRUEFDIALOG_LAYOUT: LayoutConfig = {
   name: 'clean',
-  i18nKey: 'LAYOUT.CLEAN.NAME',
-  i18nDescription: 'LAYOUT.CLEAN.DESCRIPTION',
   elements: {
-    // Header - hidden for dialog embedding
-    header: false,
-    closeButton: false,
-    
-    // Input - disabled (data provided externally)
+    // Input
     inputArea: false,
-    extractButton: false,
-    resetButton: false,
-    
-    // Status - hidden by default (can be enabled via URL param)
+
+    // Status
     statusBar: false,
-    contentTypeSelector: true,
-    progressBar: true,
-    
-    // Fields - show all with actions
+
+    // Fields
     coreFields: true,
     specialFields: true,
-    fieldActions: true,
+    fieldActions: false,
     groupCollapse: true,
-    
-    // Footer - hidden (external control)
-    footer: false,
-    
-    // Floating Controls - minimal
+
+    // Floating bar
     floatingControls: true,
+    contentTypeSelector: true,
     jsonLoader: false,
     saveButton: false,
     uploadButton: false,
-    floatingResetButton: true,
+    floatingResetButton: false,
     languageSwitcher: true
   },
   style: {
     borderless: true,
-    compact: true,  // Less padding for dialog
-    columns: 1,
-    cssClass: 'layout-clean'
+    columns: 1
   },
   behavior: {
-    readonly: false,  // Editable for corrections
-    emitChanges: true,  // Emit changes to parent
-    autoExtract: false,
-    contentTypeOnly: false
+    readonly: false
   }
 };

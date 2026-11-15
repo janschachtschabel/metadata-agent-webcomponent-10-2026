@@ -32,9 +32,12 @@
       </button>
     </div>
 
-    <!-- Tree List: a group of checkboxes (a listbox may not contain controls) -->
+    <!-- Tree List: a group of native controls (a listbox may not contain
+         controls), reached with Tab. A long vocabulary is rendered 200 entries
+         at a time - a virtual list would take entries out of the Tab order
+         (audit 14.11., U-15). -->
     <div class="tree-list" role="group" [attr.aria-label]="label || null">
-      <div *ngFor="let node of flatVisibleNodes; trackBy: trackByUri"
+      <div *ngFor="let node of shownNodes; trackBy: trackByUri"
            class="tree-node"
            [class.depth-0]="node.depth === 0"
            [class.depth-1]="node.depth === 1"
@@ -56,17 +59,38 @@
         </button>
         <span *ngIf="node.children.length === 0" class="expand-spacer"></span>
 
-        <!-- Checkbox + Label -->
+        <!-- The name of a narrower term says its level: the indentation alone
+             tells a screen reader nothing (U-15). -->
+        <ng-template #name>
+          <span class="node-label" [class.bold]="node.children.length > 0 && node.depth === 0">{{ node.concept.label }}<span class="sr-only" *ngIf="node.depth > 0">, {{ 'FIELD.VOCAB_LEVEL' | translate: { level: node.depth + 1 } }}</span></span>
+        </ng-template>
+
+        <!-- Several values: a checkbox each. One value: a button that chooses it
+             (pressed again, it takes the choice back) - a checkbox promises
+             that others can be ticked as well. -->
         <mat-checkbox
+          *ngIf="multiple; else singleChoice"
           [checked]="isSelected(node)"
           (change)="toggleSelection(node)"
           color="primary"
           class="node-checkbox">
-          <span class="node-label" [class.bold]="node.children.length > 0 && node.depth === 0">
-            {{ node.concept.label }}
-          </span>
+          <ng-container *ngTemplateOutlet="name"></ng-container>
         </mat-checkbox>
+        <ng-template #singleChoice>
+          <button type="button" class="node-choice"
+                  [attr.aria-pressed]="isSelected(node)"
+                  (click)="toggleSelection(node)">
+            <ng-container *ngTemplateOutlet="name"></ng-container>
+            <mat-icon *ngIf="isSelected(node)" aria-hidden="true">check</mat-icon>
+          </button>
+        </ng-template>
       </div>
+
+      <button *ngIf="flatVisibleNodes.length > shownNodes.length"
+              type="button" mat-button class="more-btn"
+              (click)="showMore()">
+        {{ 'FIELD.VOCAB_SHOW_MORE' | translate: { remaining: flatVisibleNodes.length - shownNodes.length } }}
+      </button>
 
       <!-- Empty state -->
       <div *ngIf="flatVisibleNodes.length === 0" class="empty-state">

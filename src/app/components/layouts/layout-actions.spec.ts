@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Type } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { NoAnimationsModule } from '../../testing/no-animations';
 
 import { DefaultLayoutComponent } from './default-layout/default-layout.component';
 import { DialogLayoutComponent } from './dialog-layout/dialog-layout.component';
@@ -32,7 +32,7 @@ function filledState(contentTypeLabel?: string): CanvasState {
 
 async function render<T>(layout: Type<T>, inputs: Record<string, unknown>) {
   await TestBed.configureTestingModule({
-    imports: [layout, TranslateModule.forRoot(), NoopAnimationsModule],
+    imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
   }).compileComponents();
   const translate = TestBed.inject(TranslateService);
   translate.setTranslation('de', { LAYOUT: { ALL_FIELDS: 'Alle Felder', CORE_FIELDS: 'Basis' } });
@@ -59,8 +59,7 @@ const WITH_UPLOAD: [string, Type<unknown>][] = [
 for (const [name, layout] of WITH_UPLOAD) {
   describe(`${name} layout upload button`, () => {
     function uploadButton(root: HTMLElement): HTMLButtonElement {
-      return Array.from(root.querySelectorAll('button'))
-        .find(b => b.textContent!.includes('cloud_upload')) as HTMLButtonElement;
+      return root.querySelector('app-floating-bar .btn-upload') as HTMLButtonElement;
     }
 
     // Release review 18.10. (pre-existing): a focused button that becomes

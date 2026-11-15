@@ -17,7 +17,7 @@ import { TranslateModule } from '@ngx-translate/core';
       style="display: none"
       (change)="onFileSelected($event)">
     
-    <button 
+    <button type="button"
       mat-icon-button
       class="control-button"
       (click)="fileInput.click()"

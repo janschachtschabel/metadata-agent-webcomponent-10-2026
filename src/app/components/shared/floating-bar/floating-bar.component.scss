@@ -1,0 +1,85 @@
+@use '../../layouts/shared-layout-styles' as shared;
+
+// Sticky and centred; a layout may set its own gap on `.floating-controls`.
+:host {
+  @include shared.floating-controls;
+
+  // No part wider than the widget: a long type name is shortened (U-25).
+  > * {
+    max-width: 100%;
+  }
+}
+
+// Icon buttons in one pill
+.action-buttons:not(.labelled) {
+  @include shared.action-buttons;
+  box-sizing: border-box;
+}
+
+// Buttons with their text (browser extension); in a narrow sidebar they wrap.
+.action-buttons.labelled {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  .btn-action {
+    @include shared.btn-neutral;
+    padding: 0 16px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
+    font-size: 13px !important;
+    box-shadow: shared.$shadow;
+    line-height: 1;
+    box-sizing: border-box;
+
+    ::ng-deep .mat-mdc-button-touch-target {
+      height: 40px !important;
+    }
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      margin-right: 6px !important;
+    }
+
+    span {
+      white-space: nowrap;
+    }
+  }
+
+  // "Send to plugin" with something to send: green, and it pulses on hover.
+  .btn-save.has-data {
+    background: #c8e6c9 !important;
+    color: #1b5e20 !important;
+    box-shadow: 0 1px 3px rgba(46, 125, 50, 0.3);
+
+    mat-icon {
+      color: #1b5e20 !important;
+    }
+
+    &:hover:not(:disabled) {
+      animation: pulse-glow 1.5s ease-in-out infinite;
+      background: #a5d6a7 !important;
+
+      // no endless motion for those who asked for less (U-16)
+      @media (prefers-reduced-motion: reduce) {
+        animation: none;
+      }
+    }
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(46, 125, 50, 0.3);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(46, 125, 50, 0.6);
+    transform: scale(1.06);
+  }
+}

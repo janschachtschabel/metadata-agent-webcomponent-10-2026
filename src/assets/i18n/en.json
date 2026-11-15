@@ -16,7 +16,8 @@
     "MODE_TEXT": "Text",
     "MODE_URL": "URL",
     "MODE_NODE_ID": "Node ID",
-    "MODE_PAGE": "Webpage"
+    "MODE_PAGE": "Webpage",
+    "MODE_LABEL": "Input mode"
   },
   "CONTENT_TYPE": {
     "SELECT": "Select Content Type",
@@ -26,7 +27,9 @@
     "FIELDS": "Fields",
     "REQUIRED": "Required",
     "FIELDS_FILLED": "fields filled",
-    "FIELDS_RECOGNIZED": "fields recognized"
+    "FIELDS_RECOGNIZED": "fields recognized",
+    "EXTRACTION_RUNNING": "Extraction running …",
+    "CANCEL_EXTRACTION": "Cancel extraction"
   },
   "FIELD": {
     "REQUIRED_HINT": "Required field – must be filled",
@@ -55,7 +58,14 @@
     "DATE_PLACEHOLDER": "DD/MM/YYYY",
     "DATETIME_PLACEHOLDER": "DD/MM/YYYY HH:MM",
     "DURATION_PLACEHOLDER": "e.g. PT2H, P1D, 2 hours",
-    "OPEN_CLOCK": "Open clock"
+    "OPEN_CLOCK": "Open clock",
+    "CHOOSE_TIME": "Choose time",
+    "ADD_ENTRY": "Add entry",
+    "ADD_ENTRY_FOR": "Add entry: {{field}}",
+    "REMOVE_ENTRY": "Remove entry",
+    "REMOVE_ENTRY_FOR": "Remove entry: {{field}}, entry {{number}}",
+    "VOCAB_LEVEL": "level {{level}}",
+    "VOCAB_SHOW_MORE": "Show more entries ({{remaining}} left)"
   },
   "PREVIEW": {
     "TITLE": "Preview Image",
@@ -95,7 +105,9 @@
     "INVALID_DURATION": "Invalid duration (Format: P1D, PT3H, \"2 hours\")",
     "INVALID_JSON": "Invalid JSON format",
     "EXPECTED_OBJECT": "Expected: object (not array or simple value)",
-    "REPAIRED_TO_OBJECT": "Stored as “{{field}}” – this field expects an object, not text."
+    "REPAIRED_TO_OBJECT": "Stored as “{{field}}” – this field expects an object, not text.",
+    "STORED_LIST_ON_SINGLE": "The record holds several values here ({{values}}), but this field takes only one. Please enter the one that applies.",
+    "STORED_VALUE_UNREADABLE": "The stored value “{{value}}” does not fit this field and is not shown in it. Please enter it again."
   },
   "ALERTS": {
     "INPUT_REQUIRED": "Please enter a text.",
@@ -108,44 +120,31 @@
     "UPLOAD_TIMEOUT_DISCARDED": "The node created in the process was removed again.",
     "UPLOAD_TIMEOUT_NODE_KEPT": "Node {{nodeId}} still exists in the repository – please check it before uploading again.",
     "UNKNOWN_ERROR": "Unknown error",
+    "NETWORK_UNREACHABLE": "The metadata agent cannot be reached. Please check the network connection and try again.",
+    "SERVICE_UNAVAILABLE": "The metadata agent does not answer at the moment (HTTP {{status}}). Please try again later.",
+    "SERVICE_TIMEOUT": "The request took too long and was cut off on its way to the metadata agent (HTTP {{status}}). Please try again.",
     "SCHEMA_INIT_FAILED": "The fields could not be loaded: {{error}}",
-    "METADATA_LOAD_ERROR": "The metadata handed in could not be loaded: {{error}}"
+    "METADATA_LOAD_ERROR": "The metadata handed in could not be loaded: {{error}}",
+    "METADATA_INPUT_INVALID": "The metadata handed in are not a valid JSON object and were not loaded.",
+    "ANSWER_UNREADABLE": "The answer is not a result of the metadata agent. Please check the address of the agent (api-url).",
+    "ACCESS_DENIED": "The request was refused (HTTP {{status}}): not signed in, or not permitted to use the metadata agent.",
+    "AGENT_NOT_FOUND": "The metadata agent was not found at its address (HTTP {{status}}). Please check the address of the agent (api-url).",
+    "REQUEST_TOO_LARGE": "The input is too large for the metadata agent (HTTP {{status}}). Please shorten the text.",
+    "REQUEST_INVALID": "The metadata agent refused the request as invalid (HTTP {{status}}).",
+    "TOO_MANY_REQUESTS": "Too many requests at the moment (HTTP {{status}}). Please wait a moment and try again.",
+    "REQUEST_FAILED": "The request to the metadata agent failed (HTTP {{status}}).",
+    "REQUEST_TIMEOUT": "The metadata agent did not answer in time. Please try again.",
+    "UPLOAD_NO_ANSWER": "The upload did not answer in time. Whether the node was created is unknown – please check the repository before uploading again.",
+    "UPLOAD_FORM_INCOMPLETE": "Not uploaded: the fields of this form could not be loaded completely. Please choose the content type again or reload the page.",
+    "RECORD_OTHER_SCHEMA": "This record was made with another schema ({{recordContext}} {{recordVersion}}). The form shows it with {{context}} {{version}} and saves it as such."
   },
   "LANGUAGE": {
     "SWITCH_TO_ENGLISH": "Switch to English",
     "SWITCH_TO_GERMAN": "Zu Deutsch wechseln"
   },
   "LAYOUT": {
-    "DEFAULT": {
-      "NAME": "Default",
-      "DESCRIPTION": "Edit mode for local, hosted, bookmarklet and browser extension use"
-    },
-    "CLEAN": {
-      "NAME": "Clean",
-      "DESCRIPTION": "Minimal, borderless view for embedding and review"
-    },
     "ALL_FIELDS": "All fields",
-    "CORE_FIELDS": "Core",
-    "DETAIL": {
-      "NAME": "Detail",
-      "DESCRIPTION": "Multi-column read-only view"
-    },
-    "DIALOG": {
-      "NAME": "Dialog",
-      "DESCRIPTION": "Compact review dialog"
-    },
-    "PLUGIN": {
-      "NAME": "Plugin",
-      "DESCRIPTION": "Compact sidebar for the browser extension"
-    },
-    "PRUEFTISCH": {
-      "NAME": "Review table",
-      "DESCRIPTION": "Card-based review view for edu-sharing"
-    },
-    "PRUEFTISCH_ORG": {
-      "NAME": "Review table (organisation)",
-      "DESCRIPTION": "Review view for organisations"
-    }
+    "CORE_FIELDS": "Core"
   },
   "EXTRACTION_RESULT": {
     "FAILED": "AI metadata generation failed",
@@ -158,5 +157,18 @@
   "ANNOUNCE": {
     "EXTRACTION_STARTED": "Extraction running …",
     "EXTRACTION_DONE": "Extraction finished. Fields filled: {{count}}."
+  },
+  "DATEPICKER": {
+    "CALENDAR": "Calendar",
+    "OPEN_CALENDAR": "Open calendar",
+    "CLOSE_CALENDAR": "Close calendar",
+    "PREV_MONTH": "Previous month",
+    "NEXT_MONTH": "Next month",
+    "PREV_YEAR": "Previous year",
+    "NEXT_YEAR": "Next year",
+    "PREV_MULTI_YEAR": "Previous 24 years",
+    "NEXT_MULTI_YEAR": "Next 24 years",
+    "SWITCH_TO_MONTH_VIEW": "Choose date",
+    "SWITCH_TO_MULTI_YEAR_VIEW": "Choose month and year"
   }
 }

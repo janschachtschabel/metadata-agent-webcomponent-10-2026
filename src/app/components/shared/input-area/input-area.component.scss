@@ -88,20 +88,19 @@
     display: flex;
     align-items: center;
 
-    ::ng-deep .mdc-switch__track::after {
-      background: shared.$surface-container !important;
-    }
-
+    // Switched on: a grey track that stands out from the page (5.9:1) with a
+    // white handle. The track was $surface-container, 1.2:1 on white - on and
+    // off looked the same from a little distance (audit 14.11., U-N).
     ::ng-deep .mdc-switch--selected .mdc-switch__track::after {
-      background: shared.$surface-container !important;
-    }
-
-    ::ng-deep .mdc-switch--selected .mdc-switch__handle::after {
       background: shared.$text-secondary !important;
     }
 
+    ::ng-deep .mdc-switch--selected .mdc-switch__handle::after {
+      background: #fff !important;
+    }
+
     ::ng-deep .mdc-switch--selected .mdc-switch__icon {
-      fill: #fff !important;
+      fill: shared.$text-secondary !important;
     }
 
     .toggle-icon {

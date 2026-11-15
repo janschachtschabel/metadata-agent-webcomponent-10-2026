@@ -1,10 +1,14 @@
 <!-- Shared Input Area -->
+<!-- While a run is out the inputs are read-only and the buttons aria-disabled:
+     natively disabled, the one with the focus dropped it to <body> the moment
+     Ctrl+Enter started the run (audit 14.11., U-14). -->
 <section class="input-area" [class.compact]="compact">
   
   <!-- Mode Switcher -->
   <div class="mode-switcher" *ngIf="showModeSwitcher">
     <mat-button-toggle-group 
       [value]="inputMode"
+      [attr.aria-label]="'INPUT.MODE_LABEL' | translate"
       (change)="inputModeChange.emit($event.value)"
       appearance="standard"
       hideSingleSelectionIndicator>
@@ -32,7 +36,7 @@
         [rows]="compact ? 2 : 4"
         [ngModel]="userText"
         (ngModelChange)="userTextChange.emit($event)"
-        [disabled]="isExtracting"
+        [readonly]="isExtracting"
         (keydown)="onTextKeydown($event)">
       </textarea>
     </mat-form-field>
@@ -47,7 +51,7 @@
         type="url"
         [ngModel]="sourceUrl"
         (ngModelChange)="sourceUrlChange.emit($event)"
-        [disabled]="isExtracting"
+        [readonly]="isExtracting"
         placeholder="https://example.com/resource">
       <mat-icon matPrefix>link</mat-icon>
     </mat-form-field>
@@ -62,7 +66,7 @@
         type="text"
         [ngModel]="nodeId"
         (ngModelChange)="nodeIdChange.emit($event)"
-        [disabled]="isExtracting"
+        [readonly]="isExtracting"
         placeholder="abc123-def456-...">
       <mat-icon matPrefix>tag</mat-icon>
     </mat-form-field>
@@ -70,7 +74,7 @@
   
   <div class="input-actions">
     <!-- Text Extraction Button -->
-    <button 
+    <button type="button"
       *ngIf="inputMode === 'text'"
       mat-flat-button
       class="btn-extract"
@@ -84,7 +88,7 @@
     </button>
     
     <!-- URL Extraction Button -->
-    <button 
+    <button type="button"
       *ngIf="inputMode === 'url'"
       mat-flat-button
       class="btn-extract"
@@ -98,7 +102,7 @@
     </button>
     
     <!-- NodeId Extraction Button -->
-    <button 
+    <button type="button"
       *ngIf="inputMode === 'nodeId'"
       mat-flat-button
       class="btn-extract"
@@ -111,23 +115,25 @@
       <span *ngIf="isExtracting">{{ 'INPUT.EXTRACTING' | translate }}</span>
     </button>
     
-    <button 
+    <button type="button"
       mat-flat-button
       class="btn-reset"
-      (click)="reset.emit()"
-      [disabled]="isExtracting">
+      (click)="isExtracting || reset.emit()"
+      [disabled]="isExtracting"
+      [disabledInteractive]="isExtracting">
       <mat-icon>refresh</mat-icon>
       {{ 'INPUT.RESET' | translate }}
     </button>
 
     <!-- Reload from current browser page (plugin only) -->
-    <button 
+    <button type="button"
       *ngIf="showPageMode"
       mat-flat-button
       class="btn-page-reload"
       [disabled]="isExtracting"
-      (click)="reloadFromPage.emit()">
-      <mat-icon>captive_portal</mat-icon>
+      [disabledInteractive]="isExtracting"
+      (click)="isExtracting || reloadFromPage.emit()">
+      <mat-icon>web</mat-icon>
       {{ 'INPUT.MODE_PAGE' | translate }}
     </button>
 

@@ -1,4 +1,4 @@
-import { Type } from '@angular/core';
+import { Type, reflectComponentType } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TranslateModule } from '@ngx-translate/core';
@@ -28,23 +28,27 @@ import { WidgetNoticeComponent } from '../shared/widget-notice/widget-notice.com
 
 const COMMON_INPUTS = [
   'state', 'contentTypes', 'userText', 'sourceUrl', 'nodeId', 'inputMode', 'backgroundColor',
-  'columns', 'flatGroups', 'showInputArea', 'showStatusBar', 'showCoreFields', 'showSpecialFields',
-  'showFloatingControls', 'showFieldActions', 'showContentTypeOnly', 'showLanguageSwitcher',
-  'showContentType', 'showResetButton', 'readonly', 'highlightAi', 'showPreview', 'screenshotEnabled',
+  'columns', 'flatGroups', 'groupCollapse', 'showInputArea', 'showStatusBar', 'showCoreFields', 'showSpecialFields',
+  'showFloatingControls', 'showContentTypeOnly', 'showLanguageSwitcher',
+  'showContentType', 'readonly', 'highlightAi', 'showPreview', 'screenshotEnabled',
 ];
 const COMMON_OUTPUTS = [
   'userTextChange', 'sourceUrlChange', 'nodeIdChange', 'startExtraction', 'startUrlExtraction',
   'startNodeIdExtraction', 'inputModeChange', 'reset', 'selectContentType', 'fieldValueChange',
   'screenshotToggle',
+  // from app-extraction-feedback, the same in every layout (audit 14.11., U-03, U-12)
+  'cancelExtraction', 'dismissError', 'dismissWarning',
+  // the buttons of an object list (W-42)
+  'objectEntryChange',
 ];
-const UPLOAD_INPUTS = ['showUploadButton', 'showSaveButton', 'uploading'];
+// The layouts with action buttons in the floating bar; the others declare none of these (audit 14.11., U-12).
+const UPLOAD_INPUTS = ['showUploadButton', 'showSaveButton', 'showResetButton', 'uploading'];
 
 const LAYOUTS: { name: string; type: Type<unknown>; inputs: string[]; outputs: string[] }[] = [
   {
     name: 'default', type: DefaultLayoutComponent,
-    inputs: [...COMMON_INPUTS, ...UPLOAD_INPUTS, 'showFooter', 'showJsonLoader'],
-    outputs: [...COMMON_OUTPUTS, 'jsonLoaded', 'jsonLoadError', 'downloadJson', 'submit', 'upload',
-      'dismissError', 'dismissWarning'],
+    inputs: [...COMMON_INPUTS, ...UPLOAD_INPUTS, 'showFieldActions', 'showJsonLoader'],
+    outputs: [...COMMON_OUTPUTS, 'jsonLoaded', 'jsonLoadError', 'downloadJson', 'submit', 'upload'],
   },
   {
     name: 'plugin', type: PluginLayoutComponent,
@@ -74,6 +78,7 @@ function expected(c: any, input: string): unknown {
     backgroundColor: () => c.backgroundColor,
     columns: () => c.effectiveColumns,
     flatGroups: () => c._flatGroups,
+    groupCollapse: () => c._layout.elements.groupCollapse,
     showContentTypeOnly: () => c._showContentTypeOnly,
     showPageMode: () => c._showPageMode,
     uploading: () => c.uploading,
@@ -100,8 +105,12 @@ describe('CanvasComponent layout bindings', () => {
       bindToInstance: () => undefined,
       relocalizeFields: () => Promise.resolve(),
       getMetadataForExport: () => ({}),
+      takeFinishedImport: () => false,
       setError: () => undefined,
       updateFieldValue: jasmine.createSpy('updateFieldValue'),
+      addObjectEntry: jasmine.createSpy('addObjectEntry'),
+      removeObjectEntry: jasmine.createSpy('removeObjectEntry'),
+      cancelExtraction: jasmine.createSpy('cancelExtraction'),
       clearError: jasmine.createSpy('clearError'),
       clearWarning: jasmine.createSpy('clearWarning'),
       setScreenshotEnabled: jasmine.createSpy('setScreenshotEnabled'),
@@ -118,6 +127,7 @@ describe('CanvasComponent layout bindings', () => {
         { provide: ApiService, useValue: {} },
         { provide: I18nService, useValue: {
           language$: new BehaviorSubject('de'), currentLang: 'de', instant: (k: string) => k,
+          setPageLanguage: () => undefined,
         } },
       ],
     });
@@ -145,6 +155,9 @@ describe('CanvasComponent layout bindings', () => {
       it('receives exactly its inputs, with the canvas values', async () => {
         const instance = await render(layout.name);
 
+        // An input a layout declares is one it renders something for (audit 14.11., U-12).
+        expect(reflectComponentType(layout.type)!.inputs.map(input => input.propName).sort())
+          .toEqual([...layout.inputs].sort());
         for (const input of layout.inputs) {
           expect(instance[input]).withContext(input).toEqual(expected(component, input));
         }
@@ -197,11 +210,13 @@ describe('CanvasComponent layout bindings', () => {
           reloadFromPage: [undefined, () => expect(c.reloadFromPage.emit).toHaveBeenCalled()],
           selectContentType: [{ schemaFile: 'x' }, () => expect(c.selectContentType).toHaveBeenCalledWith({ schemaFile: 'x' })],
           fieldValueChange: [{ fieldId: 'f', value: 1 }, () => expect(canvas.updateFieldValue).toHaveBeenCalledWith('f', 1)],
+          objectEntryChange: [{ fieldId: 'o', remove: 1 }, () => expect(canvas.removeObjectEntry).toHaveBeenCalledWith('o', 1)],
           jsonLoaded: [{ a: 1 }, () => expect(c.onJsonLoaded).toHaveBeenCalledWith({ a: 1 })],
           jsonLoadError: [undefined, () => expect(c.onJsonLoadError).toHaveBeenCalled()],
           downloadJson: [undefined, () => expect(c.downloadJson).toHaveBeenCalled()],
           submit: [undefined, () => expect(c.submit).toHaveBeenCalled()],
           upload: [undefined, () => expect(c.uploadToRepository).toHaveBeenCalled()],
+          cancelExtraction: [undefined, () => expect(canvas.cancelExtraction).toHaveBeenCalled()],
           dismissError: [undefined, () => expect(canvas.clearError).toHaveBeenCalled()],
           dismissWarning: [undefined, () => expect(canvas.clearWarning).toHaveBeenCalled()],
           screenshotToggle: [false, () => expect(canvas.setScreenshotEnabled).toHaveBeenCalledWith(false)],

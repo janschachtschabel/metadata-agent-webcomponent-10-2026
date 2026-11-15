@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Type } from '@angular/core';
 import { TranslateModule } from '@ngx-translate/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { NoAnimationsModule } from '../../testing/no-animations';
 
 import { CleanLayoutComponent } from './clean-layout/clean-layout.component';
 import { DefaultLayoutComponent } from './default-layout/default-layout.component';
@@ -11,12 +11,15 @@ import { PluginLayoutComponent } from './plugin-layout/plugin-layout.component';
 import { PrueftischLayoutComponent } from './prueftisch-layout/prueftisch-layout.component';
 import { PrueftischOrgLayoutComponent } from './prueftisch-org-layout/prueftisch-org-layout.component';
 import { CanvasFieldState, CanvasState, FieldStatus, createInitialState } from '../../shared/models/canvas.models';
-import { seriousA11yViolations } from '../../testing/a11y';
+import { inWidgetTheme, seriousA11yViolations } from '../../testing/a11y';
 
 /**
  * Every layout, filled, with its default controls: no serious axe violations
  * (audits U-01, U-05, T-02). Icon buttons without a name, unnamed progress
  * bars and clickable divs were spread over all seven.
+ *
+ * Audit 14.11. (U-13): with colour contrast, under the widget's own theme -
+ * the check was off, and four colours were below the WCAG thresholds.
  */
 const LAYOUTS: [string, Type<unknown>][] = [
   ['clean', CleanLayoutComponent],
@@ -70,9 +73,10 @@ function filledState(): CanvasState {
 for (const [name, layout] of LAYOUTS) {
   it(`${name} layout has no serious accessibility violations`, async () => {
     await TestBed.configureTestingModule({
-      imports: [layout, TranslateModule.forRoot(), NoopAnimationsModule],
+      imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
     }).compileComponents();
     const fixture = TestBed.createComponent(layout);
+    inWidgetTheme(fixture.nativeElement);
     fixture.componentRef.setInput('state', filledState());
     fixture.componentRef.setInput('contentTypes', [
       { schemaFile: 'event.json', label: 'Veranstaltung', icon: 'event' },
@@ -80,7 +84,35 @@ for (const [name, layout] of LAYOUTS) {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(await seriousA11yViolations(fixture.nativeElement)).toEqual([]);
+    expect(await seriousA11yViolations(fixture.nativeElement, { contrast: true })).toEqual([]);
+  });
+}
+
+/**
+ * The same with a form that still lacks its required field: the open-required
+ * badge of the status bar, the required hint, descriptions and placeholders
+ * (audit 14.11., U-13 - the filled form shows none of them).
+ */
+for (const [name, layout] of LAYOUTS) {
+  it(`${name} layout has no serious accessibility violations while a required field is empty`, async () => {
+    await TestBed.configureTestingModule({
+      imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(layout);
+    inWidgetTheme(fixture.nativeElement);
+    const fields = [
+      field({ status: FieldStatus.EMPTY, value: null, isAiGenerated: false, description: 'Der Titel der Ressource' }),
+      field({ fieldId: 'schema:startDate', label: 'Datum', datatype: 'date', status: FieldStatus.EMPTY, value: null, isRequired: false, description: 'Beginn' }),
+      field({ fieldId: 'cclom:general_keyword', label: 'Schlagwörter', datatype: 'array', multiple: true, value: ['Brüche'], isRequired: false }),
+    ];
+    fixture.componentRef.setInput('state', { ...filledState(), coreFields: fields, totalFields: 3, filledFields: 1,
+      fieldGroups: [{ id: 'basics', label: 'Grunddaten', schemaName: 'Core', fields, isCore: true }] });
+    fixture.componentRef.setInput('readonly', false);
+    fixture.componentRef.setInput('showStatusBar', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(await seriousA11yViolations(fixture.nativeElement, { contrast: true })).toEqual([]);
   });
 }
 
@@ -92,7 +124,7 @@ for (const [name, layout] of LAYOUTS) {
 for (const [name, layout] of LAYOUTS.filter(([n]) => n !== 'default')) {
   it(`${name} layout draws the empty-state icon without an icon font`, async () => {
     await TestBed.configureTestingModule({
-      imports: [layout, TranslateModule.forRoot(), NoopAnimationsModule],
+      imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
     }).compileComponents();
     const fixture = TestBed.createComponent(layout);
     fixture.componentRef.setInput('state', createInitialState());

@@ -1,11 +1,19 @@
 /** Field-list helpers of the canvas: what counts, what is filled, how fields group. */
 import { CanvasFieldState, FieldGroup } from '../shared/models/canvas.models';
 
+/**
+ * Does the value carry anything, however deeply nested? The one rule for
+ * "empty" in the form, the record and the requests (audit 14.11., W-41):
+ * `[{}]` and `{ address: {} }` are as empty as `[]`, and the type of an
+ * object alone is no content - an untouched object form has one, too.
+ */
 export function isValueFilled(value: any): boolean {
   if (value === null || value === undefined) return false;
-  if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'string') return value.trim().length > 0;
-  if (typeof value === 'object') return Object.keys(value).length > 0;
+  if (Array.isArray(value)) return value.some(isValueFilled);
+  if (typeof value === 'object') {
+    return Object.entries(value).some(([key, item]) => key !== '@type' && isValueFilled(item));
+  }
   return true;
 }
 

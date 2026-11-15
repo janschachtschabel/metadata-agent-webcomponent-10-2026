@@ -6,7 +6,7 @@
 
 // Everything the widget renders sits below one of these: the custom element,
 // the standalone app root (src/index.html) and the widget's own overlay
-// container under <body> (menus, selects, date and time pickers — see
+// container under <body> (menus, date and time pickers — see
 // WidgetOverlayContainer). Theme, font and icon rules stay inside them, so a
 // host page that runs Angular Material itself — edu-sharing does — keeps its
 // own --mat-* tokens, fonts and icons.
@@ -14,8 +14,9 @@ $widget-roots: 'metadata-agent-canvas, app-root[data-metadata-agent-app], .metad
 $font-family: '"Metadata Agent Roboto", Roboto, "Helvetica Neue", sans-serif';
 
 // What mat.core() used to provide. elevation-classes() emits its classes via
-// @at-root, i.e. globally — the same rules a Material host defines itself (the
-// timepicker's clock buttons use .mat-elevation-z0).
+// @at-root, i.e. globally — the same rules a Material host defines itself. (The
+// clock dial of ngx-mat-timepicker needed them; it is gone since the audit of
+// 14.11., U-19. Whether anything else does was not checked without a build.)
 @include mat.elevation-classes();
 
 // app-background() emits .mat-app-background via @at-root as well, plus
@@ -191,18 +192,3 @@ $theme: mat.define-theme((
     outline-offset: 2px;
   }
 }
-
-// ngx-mat-timepicker opens as a dialog with this panel class, in the widget's
-// overlay container. Its clock hand and centre are <mat-toolbar color="primary">;
-// M3 has no colour variants, so without the former M2 theme they took the
-// surface colour and vanished on the dial. (The overrides that stood here
-// targeted ngx-mat-timepicker-container, which neither timepicker 19 nor 21
-// renders — they never applied.)
-.metadata-agent-overlays .ngx-mat-timepicker-dialog {
-  .clock-face__clock-hand,
-  .clock-face__center {
-    --mat-toolbar-container-background-color: var(--md-primary);
-    --mat-toolbar-container-text-color: var(--md-on-primary);
-  }
-}
-

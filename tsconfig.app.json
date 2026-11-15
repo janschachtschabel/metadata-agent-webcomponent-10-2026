@@ -1,0 +1,17 @@
+/* The build's type-check: what main.ts reaches, without the specs and
+   src/app/testing (audit 14.11., U-20). tsconfig.json has no `files`, so it
+   took every .ts file below the project - a type error in a spec stopped the
+   production build. The specs are checked with tsconfig.spec.json. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/app",
+    "types": []
+  },
+  "files": [
+    "src/main.ts"
+  ],
+  "include": [
+    "src/**/*.d.ts"
+  ]
+}

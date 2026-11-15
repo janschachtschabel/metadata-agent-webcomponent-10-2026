@@ -1,8 +1,17 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { NEVER, Observable, firstValueFrom, fromEvent, of, takeUntil, timeout } from 'rxjs';
 import { LoggerService } from './logger.service';
 import { getInitialApiUrl, normalizeApiUrl } from './api-url';
+
+/**
+ * How long the widget waits for an answer (audit 14.11., W-50). No call had a
+ * limit: behind a proxy that keeps the connection open, a schema never came,
+ * an extraction never ended and a hanging /upload held its button for good.
+ * Above the agent's own limits (upload 100 s, generation 300 s), so its
+ * answer - a result or its own timeout message - comes first.
+ */
+export const REQUEST_TIMEOUT_MS = { schema: 30_000, upload: 130_000, generate: 330_000 };
 
 export interface SchemaField {
   id: string;
@@ -27,7 +36,6 @@ export interface GenerateRequest {
   source_url?: string;
   extraction_method?: 'simple' | 'browser';
   node_id?: string;
-  repository?: 'staging' | 'prod';
   context?: string;
   version?: string;
   schema_file?: string;
@@ -97,14 +105,6 @@ export interface GenerateResponse {
   processing: GenerateProcessing;
 }
 
-export interface ScreenshotRequest {
-  url: string;
-  method?: 'pageshot' | 'playwright';
-  width?: number;
-  height?: number;
-  format?: string;
-}
-
 export interface ScreenshotResponse {
   success: boolean;
   method: string;
@@ -118,9 +118,12 @@ export interface ScreenshotResponse {
   image_base64?: string;
 }
 
+/**
+ * Without `repository`: the agent writes to the repository it is configured
+ * for and ignores the field; the widget always sent 'staging' (W-N).
+ */
 export interface UploadRequest {
   metadata: Record<string, any>;
-  repository?: 'staging' | 'prod';
   check_duplicates?: boolean;
   start_workflow?: boolean;
   write_extended_data?: boolean;
@@ -142,6 +145,12 @@ export interface UploadResponse {
   node?: UploadNodeInfo;
   error?: string;
   step?: string;
+}
+
+/** Emits once `signal` aborts (at once if it has); never without a signal. */
+function aborted(signal?: AbortSignal): Observable<unknown> {
+  if (!signal) return NEVER;
+  return signal.aborted ? of(true) : fromEvent(signal, 'abort');
 }
 
 /**
@@ -187,6 +196,7 @@ export class ApiService {
     try {
       const response = await firstValueFrom(
         this.http.get<{ fields: SchemaField[] }>(url, { headers: this.getHeaders() })
+          .pipe(timeout(REQUEST_TIMEOUT_MS.schema))
       );
       return response;
     } catch (error) {
@@ -198,15 +208,18 @@ export class ApiService {
   // ===== Metadata Endpoints =====
 
   /**
-   * Generate metadata from text or URL
+   * Generate metadata from text or URL. Aborting `signal` cancels the request
+   * and rejects: the agent works on a /generate call for up to 300 s, also when
+   * nobody waits for the answer any more (W-PERF-01).
    */
-  async generate(request: GenerateRequest): Promise<GenerateResponse> {
+  async generate(request: GenerateRequest, signal?: AbortSignal): Promise<GenerateResponse> {
     const url = `${this.apiUrl}/generate`;
     this.logger.debug('Generating metadata', request);
     
     try {
       const body = await firstValueFrom(
         this.http.post<GenerateResponseRaw>(url, request, { headers: this.getHeaders() })
+          .pipe(timeout(REQUEST_TIMEOUT_MS.generate), takeUntil(aborted(signal)))
       );
       // An empty 200 from a proxy must not throw here: the canvas reports a
       // response without `processing` as unusable, in the editor's language.
@@ -239,7 +252,8 @@ export class ApiService {
       this.logger.info(`Metadata generated: ${response.processing?.fields_extracted}/${response.processing?.fields_total} fields`);
       return response;
     } catch (error) {
-      this.logger.error('Failed to generate metadata', error);
+      // An aborted request is no failure of the agent.
+      if (!signal?.aborted) this.logger.error('Failed to generate metadata', error);
       throw error;
     }
   }
@@ -252,11 +266,12 @@ export class ApiService {
    */
   async upload(request: UploadRequest): Promise<UploadResponse> {
     const url = `${this.apiUrl}/upload`;
-    this.logger.debug('Uploading metadata to repository', { repository: request.repository });
-    
+    this.logger.debug('Uploading metadata to repository');
+
     try {
       const response = await firstValueFrom(
         this.http.post<UploadResponse>(url, request, { headers: this.getHeaders() })
+          .pipe(timeout(REQUEST_TIMEOUT_MS.upload))
       );
       if (response.success) {
         this.logger.info(`Upload successful: ${response.node?.nodeId}`);
