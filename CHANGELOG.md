@@ -1,5 +1,27 @@
 # Änderungen
 
+## 4.0.1 — 2026-11-15 — Datum in der englischen Nur-Lese-Ansicht
+
+Gehört zum Agenten 4.0.1. Attribute, Ereignisse und Ansichten wie in 4.0.0.
+
+- **Datum in einem englischen Widget:** Startete das Widget auf Englisch,
+  zeigte die Nur-Lese-Ansicht ein Datum mit deutschen Punkten (`03.05.2026`),
+  ein Datum mit Uhrzeit daneben aber englisch (`03/05/2026 14:00`). Der Text
+  des Datums entstand, bevor der Datums-Adapter die Sprache kannte
+  (`ngOnChanges` läuft vor `ngOnInit`). Der Adapter bekommt die Sprache jetzt
+  im Konstruktor von `FieldComponent`. Nach einem Sprachwechsel stimmte es
+  schon bisher.
+- **Specs unabhängig von der Browser-Sprache:** `layout-readonly-values.spec.ts`
+  legte die Sprache nicht fest. Ohne Vorgabe richtet sich das Widget nach dem
+  Browser; die sieben Specs „shows every value as text“ liefen deshalb in einem
+  deutschen Chrome durch und scheiterten im englischen Chromium des
+  CI-Containers – so in der ersten GitLab-Pipeline von 4.0.0. Die Spec setzt
+  die Sprache jetzt wie eine Host-Seite, und ein neuer Fall prüft die englische
+  Ansicht.
+- **Geprüft:** Karma 1282 Specs, mit deutsch und mit englisch eingestelltem
+  Browser; die Testschritte der Pipeline im Image `node:22.20.0-bookworm`
+  nachgestellt.
+
 ## 4.0.0 — 2026-11-15 — Korrekturen aus dem Audit vom 14.11.
 
 Gehört zum Agenten 4.0.0. Die Version springt auf 4.0.0, weil sich Verhalten

@@ -12,6 +12,7 @@ import { PrueftischLayoutComponent } from './prueftisch-layout/prueftisch-layout
 import { PrueftischOrgLayoutComponent } from './prueftisch-org-layout/prueftisch-org-layout.component';
 import { CanvasFieldState, CanvasState, FieldStatus, createInitialState } from '../../shared/models/canvas.models';
 import { inWidgetTheme, seriousA11yViolations } from '../../testing/a11y';
+import { I18nService } from '../../core/i18n.service';
 
 /**
  * Audit 14.11. (U-02): a read-only view showed its values in disabled edit
@@ -70,10 +71,18 @@ function everyKind(): CanvasFieldState[] {
   ];
 }
 
-async function render(layout: Type<unknown>, fields: CanvasFieldState[], width?: number): Promise<ComponentFixture<unknown>> {
+/**
+ * The language is set like a host page sets it. Left open, the widget follows
+ * the browser: the specs passed in a German Chrome and failed in the English
+ * Chromium of the CI container (first pipeline of 4.0.0, 15.11.).
+ */
+async function render(
+  layout: Type<unknown>, fields: CanvasFieldState[], width?: number, language = 'de',
+): Promise<ComponentFixture<unknown>> {
   await TestBed.configureTestingModule({
     imports: [layout, TranslateModule.forRoot(), NoAnimationsModule],
   }).compileComponents();
+  TestBed.inject(I18nService).setHostLanguage(language);
   const fixture = TestBed.createComponent(layout);
   const host = fixture.nativeElement as HTMLElement;
   inWidgetTheme(host);
@@ -164,6 +173,18 @@ for (const [name, layout] of LAYOUTS) {
     });
   });
 }
+
+describe('read-only dates in an English widget', () => {
+  it('are written the English way, with and without a time', async () => {
+    // The date kept the German dots when the widget started in English: its
+    // text was built before the date adapter knew the language.
+    const root = (await render(DetailLayoutComponent, everyKind(), undefined, 'en')).nativeElement as HTMLElement;
+    const text = (label: string) => valueOf(root, label).textContent!.replace(/\s+/g, ' ').trim();
+
+    expect(text('Datum')).toBe('03/05/2026');
+    expect(text('Einlass')).toBe('03/05/2026 14:00');
+  });
+});
 
 describe('read-only values that are no web addresses', () => {
   it('are not linked', async () => {

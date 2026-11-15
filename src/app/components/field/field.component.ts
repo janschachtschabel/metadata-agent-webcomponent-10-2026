@@ -267,7 +267,12 @@ export class FieldComponent implements OnInit, OnChanges, OnDestroy {
     private translate: TranslateService,
     private elRef: ElementRef<HTMLElement>,
     private dateAdapter: DateAdapter<Date>
-  ) {}
+  ) {
+    // Before the first value is put into words (ngOnChanges runs ahead of
+    // ngOnInit): a read-only date kept the German dots in an English widget,
+    // next to a date with a time written with slashes.
+    this.dateAdapter.setLocale(this.dateLocale);
+  }
 
   ngOnInit(): void {
     this.dateAdapter.setLocale(this.dateLocale);
