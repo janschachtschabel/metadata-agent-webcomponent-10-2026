@@ -968,7 +968,7 @@ Attributen setzen; eine Zeile wird nur geschrieben, solange es an ist.
 
 ```
 [canvas-0] apiUrl setter called: "http://localhost:8000"
-[i18n] Loading de from http://localhost:8000/widget/i18n/de.json?v=4.0.2
+[i18n] Loading de from http://localhost:8000/widget/i18n/de.json?v=4.0.3
 [canvas-0] → bound to instance "shared", isPrimary=true
 ```
 

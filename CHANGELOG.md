@@ -1,5 +1,11 @@
 # Änderungen
 
+## 4.0.3 — 2026-11-16 — Version des Agenten 4.0.3
+
+Keine Änderung am Code. Das Widget trägt die Version des Agenten, mit dem es
+ausgeliefert wird (`/widget/info`); der Agent 4.0.3 bringt die Ausweichkette
+zu Textextraktion und Geocoder (CHANGELOG des Agenten).
+
 ## 4.0.2 — 2026-11-16 — Farbe von Kalender und Uhr, Einbettung in edu-sharing
 
 Gehört zum Agenten 4.0.2. Attribute, Ereignisse und Ansichten wie in 4.0.1.

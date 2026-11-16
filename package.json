@@ -1,6 +1,6 @@
 {
   "name": "metadata-agent-canvas",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "description": "Optimized Angular Web Component for AI-powered Metadata Extraction",
   "license": "Apache-2.0",
   "scripts": {
