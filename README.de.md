@@ -238,15 +238,63 @@ im Formular-Editor zusätzlich in einem `setTimeout`. Bis dahin ist der
 Eingabebereich zu sehen ([siehe oben](#vor-dem-ersten-zeichnen-konfigurieren);
 2.1.1 verhielt sich genauso).
 
-**Kleinste Korrektur:** ein statisches Attribut in beiden Templates. Die
-späteren Zuweisungen bleiben, wie sie sind.
+**Kleinste Korrektur: die Einstellungen als Attribute in die beiden
+Templates.** Attribute stehen am Element, bevor die Skripte es starten, und
+entscheiden damit das erste Bild. Die späteren Zuweisungen von edu-sharing
+bleiben, wie sie sind; sie setzen dieselben Werte noch einmal.
+
+Formular-Editor, wie edu-sharing ihn zeigt: Titel, Beschreibung usw. zeichnet
+edu-sharing selbst, darunter folgen direkt die Felder des Inhaltstyps (bei einer
+Veranstaltung „Event-Typisierung“, „Termin & Status“ …). Also ohne
+Eingabebereich, ohne Basisfelder, ohne schwebende Leiste:
 
 ```html
-<!-- Formular-Editor -->
-<metadata-agent-canvas #canvas layout="clean" show-floating-controls="false"></metadata-agent-canvas>
-<!-- Detailansicht -->
-<metadata-agent-canvas #canvas layout="detail" show-floating-controls="false"></metadata-agent-canvas>
+<!-- Formular-Editor, Feld ccm:oeh_extendedData -->
+<metadata-agent-canvas #canvas
+    [attr.layout]="viewer ? 'detail' : 'clean'"
+    [attr.readonly]="viewer ? 'true' : null"
+    [attr.columns]="groupId === 'io_render' ? 4 : 1"
+    [attr.language]="language"
+    show-input-area="false"
+    show-core-fields="false"
+    show-floating-controls="false"
+    highlight-ai="true">
+</metadata-agent-canvas>
 ```
+
+```html
+<!-- Detailansicht (wlo-extended-content-types) -->
+<metadata-agent-canvas #canvas
+    layout="detail"
+    readonly
+    columns="1"
+    borderless="true"
+    background-color="transparent"
+    show-floating-controls="false"
+    [attr.language]="language">
+</metadata-agent-canvas>
+```
+
+- `viewer`, `groupId` und `language` stehen für die Werte, die der Code von
+  edu-sharing heute nach dem Laden zuweist (`mdsEditorInstance.editorMode ===
+  'viewer'`, `mdsEditorInstance.groupId`, die Sprache von edu-sharing). Als
+  Attribut-Binding (`[attr.…]`) setzt Angular sie in derselben Change Detection,
+  die das Element anlegt (`this.cdr.detectChanges()`), also vor dem Laden der
+  Skripte.
+- `layout="clean"` allein hat schon keinen Eingabebereich
+  ([Matrix](#standardwerte-je-layout)); `show-input-area="false"` hält das fest,
+  auch wenn die Seite das Layout später wechselt.
+- `show-core-fields="false"` zählt, sobald ein Datensatz da ist: Ohne Datensatz
+  zeichnet das Widget noch keine Felder. Kommt `metadataInput` vor
+  `showCoreFields` an, wären Titel und Beschreibung für diesen Moment zu sehen.
+- `apiUrl`, `metadataInput` und die Ereignis-Handler bleiben im Code von
+  edu-sharing; sie verändern das erste Bild nicht.
+
+Geprüft im Browser mit einer Seite, die edu-sharing nachbildet (Element im
+Markup, Skripte danach geladen, Werte 2 s später gesetzt): Ohne Attribute waren
+Eingabebereich und schwebende Leiste zu sehen, mit den Attributen oben nichts
+davon. Prüfen lässt sich eine Einbindung mit dem `MutationObserver` aus dem
+[Abschnitt oben](#vor-dem-ersten-zeichnen-konfigurieren).
 
 **Vollständige Korrektur:** erst konfigurieren, dann die Skripte laden.
 
@@ -920,7 +968,7 @@ Attributen setzen; eine Zeile wird nur geschrieben, solange es an ist.
 
 ```
 [canvas-0] apiUrl setter called: "http://localhost:8000"
-[i18n] Loading de from http://localhost:8000/widget/i18n/de.json?v=4.0.1
+[i18n] Loading de from http://localhost:8000/widget/i18n/de.json?v=4.0.2
 [canvas-0] → bound to instance "shared", isPrimary=true
 ```
 

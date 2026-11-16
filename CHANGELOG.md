@@ -1,5 +1,25 @@
 # Änderungen
 
+## 4.0.2 — 2026-11-16 — Farbe von Kalender und Uhr, Einbettung in edu-sharing
+
+Gehört zum Agenten 4.0.2. Attribute, Ereignisse und Ansichten wie in 4.0.1.
+
+- **Kalender und Uhr in einer Farbe:** In edu-sharing war das
+  Kalender-Symbol eines Datumsfelds grau, das Uhr-Symbol daneben schwarz.
+  Material färbt die beiden über verschiedene Tokens (Datepicker-Token bzw.
+  Icon-Button-Token), und das Theme von edu-sharing setzt sie verschieden.
+  Das Widget setzt beide Tokens an den beiden Symbolen auf die Farbe des
+  Dropdown-Pfeils (`#5b667a`), unabhängig vom Theme der Seite. Gesperrt
+  (während der Erschließung) und geöffnet behalten sie die Farben von
+  Material. Zwei Specs setzen die Tokens wie eine Host-Seite.
+- **Doku, Einbettung in edu-sharing:** Die „kleinste Korrektur“ gegen den kurz
+  sichtbaren Eingabebereich setzte nur `layout` und `show-floating-controls`.
+  Jetzt ein vollständiges Beispiel für beide Templates, passend zur
+  Konfiguration von edu-sharing (ohne Eingabebereich, ohne Basisfelder, ohne
+  schwebende Leiste; `layout`, `readonly`, `columns` und `language` als
+  Attribut-Binding). Im Browser mit einer nachgebauten edu-sharing-Seite
+  geprüft (README und README.de).
+
 ## 4.0.1 — 2026-11-15 — Datum in der englischen Nur-Lese-Ansicht
 
 Gehört zum Agenten 4.0.1. Attribute, Ereignisse und Ansichten wie in 4.0.0.

@@ -234,15 +234,62 @@ in the form editor additionally inside a `setTimeout`. Until then the input area
 is visible ([see above](#configure-before-the-first-render); 2.1.1 behaved the
 same).
 
-**Smallest fix:** a static attribute in both templates. The assignments that
-follow later stay as they are.
+**Smallest fix: the settings as attributes in both templates.** Attributes
+are on the element before the scripts start it, so they decide the first
+render. edu-sharing's later assignments stay as they are; they set the same
+values once more.
+
+The form editor as edu-sharing shows it: edu-sharing draws title, description
+etc. itself, and below them follow the fields of the content type directly (for
+an event "Event-Typisierung", "Termin & Status" …). So no input area, no core
+fields, no floating bar:
 
 ```html
-<!-- form editor -->
-<metadata-agent-canvas #canvas layout="clean" show-floating-controls="false"></metadata-agent-canvas>
-<!-- detail view -->
-<metadata-agent-canvas #canvas layout="detail" show-floating-controls="false"></metadata-agent-canvas>
+<!-- form editor, field ccm:oeh_extendedData -->
+<metadata-agent-canvas #canvas
+    [attr.layout]="viewer ? 'detail' : 'clean'"
+    [attr.readonly]="viewer ? 'true' : null"
+    [attr.columns]="groupId === 'io_render' ? 4 : 1"
+    [attr.language]="language"
+    show-input-area="false"
+    show-core-fields="false"
+    show-floating-controls="false"
+    highlight-ai="true">
+</metadata-agent-canvas>
 ```
+
+```html
+<!-- detail view (wlo-extended-content-types) -->
+<metadata-agent-canvas #canvas
+    layout="detail"
+    readonly
+    columns="1"
+    borderless="true"
+    background-color="transparent"
+    show-floating-controls="false"
+    [attr.language]="language">
+</metadata-agent-canvas>
+```
+
+- `viewer`, `groupId` and `language` stand for the values edu-sharing's code
+  assigns today after loading (`mdsEditorInstance.editorMode === 'viewer'`,
+  `mdsEditorInstance.groupId`, edu-sharing's language). As attribute bindings
+  (`[attr.…]`) Angular sets them in the same change detection that creates the
+  element (`this.cdr.detectChanges()`), so before the scripts are loaded.
+- `layout="clean"` alone already has no input area
+  ([matrix](#defaults-per-layout)); `show-input-area="false"` keeps it that way
+  even if the page switches the layout later.
+- `show-core-fields="false"` counts as soon as there is a record: without a
+  record the widget draws no fields yet. If `metadataInput` arrived before
+  `showCoreFields`, title and description would show for that moment.
+- `apiUrl`, `metadataInput` and the event handlers stay in edu-sharing's code;
+  they do not change the first render.
+
+Checked in the browser with a page that rebuilds edu-sharing (element in the
+markup, scripts loaded afterwards, values set 2 s later): without attributes
+the input area and the floating bar showed, with the attributes above none of
+it. An embedding can be checked with the `MutationObserver` from the
+[section above](#configure-before-the-first-render).
 
 **Complete fix:** configure first, then load the scripts.
 
@@ -891,7 +938,7 @@ attributes; a line is written only while it is on.
 
 ```
 [canvas-0] apiUrl setter called: "http://localhost:8000"
-[i18n] Loading de from http://localhost:8000/widget/i18n/de.json?v=4.0.1
+[i18n] Loading de from http://localhost:8000/widget/i18n/de.json?v=4.0.2
 [canvas-0] → bound to instance "shared", isPrimary=true
 ```
 

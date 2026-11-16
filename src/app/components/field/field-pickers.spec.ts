@@ -186,6 +186,40 @@ describe('FieldComponent pickers', () => {
     });
   });
 
+  // edu-sharing 16.11.: its Material theme made the calendar grey (the
+  // datepicker token) and the clock black (the icon-button token).
+  describe('calendar and clock in a host page with a Material theme of its own', () => {
+    afterEach(() => {
+      for (const token of ['--mat-sys-on-surface-variant', '--mat-sys-on-surface', '--mat-datepicker-toggle-icon-color', '--mat-icon-button-icon-color']) {
+        document.documentElement.style.removeProperty(token);
+      }
+    });
+
+    it('have one colour, not the two the host tokens give them', async () => {
+      document.documentElement.style.setProperty('--mat-sys-on-surface-variant', 'rgb(150, 150, 150)');
+      document.documentElement.style.setProperty('--mat-datepicker-toggle-icon-color', 'rgb(150, 150, 150)');
+      document.documentElement.style.setProperty('--mat-icon-button-icon-color', 'rgb(0, 0, 0)');
+      await render(field({ datatype: 'datetime' }));
+
+      const colour = (selector: string) => getComputedStyle(root.querySelector(`${selector} button`)!).color;
+      expect(colour('mat-timepicker-toggle')).toBe(colour('mat-datepicker-toggle'));
+      expect(colour('mat-datepicker-toggle')).toBe('rgb(91, 102, 122)');
+    });
+
+    it('still look locked while the field is being extracted', async () => {
+      // A host theme names on-surface; Material derives the locked colour from it.
+      document.documentElement.style.setProperty('--mat-sys-on-surface', 'rgb(20, 20, 20)');
+      document.documentElement.style.setProperty('--mat-icon-button-icon-color', 'rgb(0, 0, 0)');
+      await render(field({ datatype: 'datetime', status: FieldStatus.EXTRACTING }));
+
+      for (const selector of ['mat-datepicker-toggle', 'mat-timepicker-toggle']) {
+        const button = root.querySelector(`${selector} button`) as HTMLButtonElement;
+        expect(button.disabled).withContext(selector).toBeTrue();
+        expect(getComputedStyle(button).color).withContext(selector).not.toBe('rgb(91, 102, 122)');
+      }
+    });
+  });
+
   describe('created only where the datatype needs them (U-18)', () => {
     const count = (type: unknown) => fixture.debugElement.queryAll(By.directive(type as any)).length;
     const vocabulary = { type: 'closed', concepts: [{ label: 'A' }, { label: 'B' }, { label: 'C' }, { label: 'D' }, { label: 'E' }] } as any;

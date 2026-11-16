@@ -86,6 +86,16 @@
     }
   }
 
+  // Calendar and clock in the colour of the dropdown arrow, whatever theme the
+  // host page brings: edu-sharing's tokens made the calendar grey (datepicker
+  // token) and the clock black (icon-button token). The tokens rather than a
+  // colour, so Material's locked and open states keep theirs.
+  mat-datepicker-toggle,
+  mat-timepicker-toggle {
+    --mat-datepicker-toggle-icon-color: #5b667a;
+    --mat-icon-button-icon-color: #5b667a;
+  }
+
   // Dropdown arrow for vocabulary fields
   .dropdown-arrow {
     cursor: pointer;
