@@ -1,5 +1,11 @@
 # Änderungen
 
+## 4.0.4 — 2026-11-17 — Version des Agenten 4.0.4
+
+Keine Änderung am Code. Das Widget trägt die Version des Agenten, mit dem es
+ausgeliefert wird (`/widget/info`); der Agent 4.0.4 stellt den Betrieb auf
+das Delegations-Token der B-API ein (CHANGELOG des Agenten).
+
 ## 4.0.3 — 2026-11-16 — Version des Agenten 4.0.3
 
 Keine Änderung am Code. Das Widget trägt die Version des Agenten, mit dem es
